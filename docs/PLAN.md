@@ -192,6 +192,9 @@ The UI observes this as a `StateFlow` and shows the exact stage, so a failure re
 - **Exit criteria:** a written protocol notes file plus captures committed to `docs/`
 
 ### Phase 1: `:ptpip` library
+**Status:** built and passing 23 tests against the simulated camera (`ptpip/src/testFixtures`), including
+chunked downloads, resuming after a mid-transfer drop, single-client refusal, events and probes. The
+`ptpip-cli` tool is ready for the real-camera run in [phase0-camera-test.md](phase0-camera-test.md).
 - Packet framing, init handshake (persistent GUID + friendly name), session,
   the operations listed above, and dataset parsing
 - Fake camera server for unit tests. Replay the captured bytes as golden tests.
