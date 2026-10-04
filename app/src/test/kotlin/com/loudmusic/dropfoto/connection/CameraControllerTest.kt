@@ -28,6 +28,7 @@ class CameraControllerTest {
         probeTimeoutMillis = 200,
         backoffMillis = listOf(50, 100),
         maxAttempts = 4,
+        rejoinWindowMillis = 1_500,
     )
 
     /** Stands in for the camera's Wi-Fi: always available until the test says it's lost. */
@@ -138,6 +139,21 @@ class CameraControllerTest {
         controller.awaitState { it is ConnectionState.Reconnecting && it.reason == "camera Wi-Fi not back yet" }
         controller.awaitState { it is ConnectionState.Connected }
         assertEquals(listOf(false, true, true, true), synchronized(provider.reconnectFlags) { provider.reconnectFlags.toList() })
+    }
+
+    @Test
+    fun `gives up when the camera Wi-Fi stays away past the rejoin window`() = test {
+        val fake = fake()
+        val provider = TestProvider(failReconnects = Int.MAX_VALUE)
+        val controller = CameraController(scope, fastTiming)
+        controller.connect(provider, config(fake))
+        controller.awaitState { it is ConnectionState.Connected }
+
+        synchronized(provider.networks) { provider.networks.single() }.lost.complete(Unit)
+        controller.awaitState { it is ConnectionState.JoiningNetwork && it.rejoining }
+        val failed = controller.awaitState { it is ConnectionState.Failed } as ConnectionState.Failed
+        assertTrue("didn't come back" in failed.message, failed.message)
+        assertTrue(provider.acquired.get() > 4, "kept retrying for the whole window, not just maxAttempts")
     }
 
     @Test

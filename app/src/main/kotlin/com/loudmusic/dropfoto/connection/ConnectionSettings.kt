@@ -5,6 +5,9 @@ import android.os.Build
 import android.util.Base64
 import androidx.core.content.edit
 import com.loudmusic.dropfoto.ptpip.PtpIpConfig
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.security.SecureRandom
 
 enum class ConnectionMode {
@@ -55,17 +58,33 @@ class SettingsStore(context: Context) : KnownCameraStore {
             }
     }
 
-    override fun knownCamera(): KnownCamera? {
-        val ssid = prefs.getString(KEY_KNOWN_SSID, null) ?: return null
-        val bssid = prefs.getString(KEY_KNOWN_BSSID, null) ?: return null
-        return KnownCamera(ssid, bssid)
-    }
+    private val _knownCamera = MutableStateFlow(loadKnownCamera())
+
+    /** The paired (or last seen) camera access point, for the UI. */
+    val knownCameraFlow: StateFlow<KnownCamera?> = _knownCamera.asStateFlow()
+
+    override fun knownCamera(): KnownCamera? = _knownCamera.value
 
     override fun rememberCamera(camera: KnownCamera) {
         prefs.edit {
             putString(KEY_KNOWN_SSID, camera.ssid)
             putString(KEY_KNOWN_BSSID, camera.bssid)
         }
+        _knownCamera.value = camera
+    }
+
+    fun forgetCamera() {
+        prefs.edit {
+            remove(KEY_KNOWN_SSID)
+            remove(KEY_KNOWN_BSSID)
+        }
+        _knownCamera.value = null
+    }
+
+    private fun loadKnownCamera(): KnownCamera? {
+        val ssid = prefs.getString(KEY_KNOWN_SSID, null) ?: return null
+        val bssid = prefs.getString(KEY_KNOWN_BSSID, null) ?: return null
+        return KnownCamera(ssid, bssid)
     }
 
     val friendlyName: String get() = "DropFoto (${Build.MODEL})".take(40)

@@ -7,7 +7,8 @@ import com.loudmusic.dropfoto.ptpip.OperationCode
 sealed interface ConnectionState {
     data object Idle : ConnectionState
 
-    data object JoiningNetwork : ConnectionState
+    /** @param rejoining true when the camera's Wi-Fi went away mid-session and we're waiting for it */
+    data class JoiningNetwork(val rejoining: Boolean = false) : ConnectionState
 
     data class Connecting(val attempt: Int) : ConnectionState
 

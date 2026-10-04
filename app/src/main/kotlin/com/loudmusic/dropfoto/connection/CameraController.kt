@@ -41,6 +41,8 @@ class CameraController(
         val backoffMillis: List<Long> = listOf(1_000, 2_000, 4_000, 8_000, 15_000),
         /** Consecutive failed attempts before giving up and reporting [ConnectionState.Failed]. */
         val maxAttempts: Int = 8,
+        /** After the camera's Wi-Fi disappears, how long to keep trying to rejoin it. */
+        val rejoinWindowMillis: Long = 5 * 60_000,
     )
 
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
@@ -65,7 +67,7 @@ class CameraController(
         synchronized(lock) {
             if (job?.isActive == true) return
             val previous = job
-            _state.value = ConnectionState.JoiningNetwork
+            _state.value = ConnectionState.JoiningNetwork()
             job = scope.launch {
                 // Let a previous session finish closing first: the camera accepts one client at a time.
                 previous?.join()
@@ -93,33 +95,38 @@ class CameraController(
     private suspend fun session(provider: CameraNetworkProvider, config: (SocketFactory) -> PtpIpConfig) {
         var outcome: ConnectionState = ConnectionState.Idle
         var failures = 0
-        var reconnecting = false
+        var lostAt: Long? = null // when the camera network went away, while we try to rejoin it
         try {
             while (true) {
-                _state.value = ConnectionState.JoiningNetwork
-                log(if (reconnecting) "Rejoining the camera's network" else "Joining the camera's network")
+                val rejoining = lostAt != null
+                _state.value = ConnectionState.JoiningNetwork(rejoining)
+                log(if (rejoining) "Rejoining the camera's network" else "Joining the camera's network")
                 val network = try {
-                    provider.acquire(reconnecting)
+                    provider.acquire(rejoining)
                 } catch (e: NetworkUnavailableException) {
                     val reason = e.message ?: "Couldn't join the camera's Wi-Fi"
                     // On the first join, report straight away (wrong settings, dialog declined).
-                    // After a drop, the camera's Wi-Fi may just be restarting, so keep trying.
-                    if (!reconnecting) throw GiveUp(reason)
+                    // After a drop, the camera's Wi-Fi may be restarting or switched off for a moment.
+                    if (lostAt == null) throw GiveUp(reason)
+                    log(reason)
+                    if (System.currentTimeMillis() - lostAt > timing.rejoinWindowMillis) {
+                        throw GiveUp("The camera's Wi-Fi didn't come back. Tap Connect when it's on again.")
+                    }
                     failures++
-                    if (failures >= timing.maxAttempts) throw GiveUp(reason)
-                    backoff(failures, reason, lost = null)
+                    backoff(failures, reason, lost = null, showAttempts = false)
                     continue
                 }
-                reconnecting = true
+                lostAt = null
+                failures = 0
                 log("Camera network ready")
                 try {
                     failures = runOnNetwork(network, config, failures)
                 } finally {
                     network.release()
                 }
-                failures++
-                if (failures >= timing.maxAttempts) throw GiveUp("Lost the camera's Wi-Fi network")
-                backoff(failures, "Camera Wi-Fi network lost", lost = null)
+                lostAt = System.currentTimeMillis()
+                failures = 1
+                backoff(failures, "Camera Wi-Fi network lost", lost = null, showAttempts = false)
             }
         } catch (e: GiveUp) {
             outcome = ConnectionState.Failed(e.message)
@@ -164,10 +171,16 @@ class CameraController(
     }
 
     /** Waits before the next attempt; wakes early if the network goes away. */
-    private suspend fun backoff(failures: Int, reason: String, lost: Deferred<Unit>?) {
+    private suspend fun backoff(failures: Int, reason: String, lost: Deferred<Unit>?, showAttempts: Boolean = true) {
         val wait = timing.backoffMillis[minOf(failures - 1, timing.backoffMillis.lastIndex)]
-        _state.value = ConnectionState.Reconnecting(failures, timing.maxAttempts, (wait + 999) / 1000, reason)
-        log("Retrying in ${(wait + 999) / 1000} s (attempt ${failures + 1} of ${timing.maxAttempts})")
+        val seconds = (wait + 999) / 1000
+        _state.value = ConnectionState.Reconnecting(
+            attempt = failures,
+            maxAttempts = if (showAttempts) timing.maxAttempts else 0,
+            delaySeconds = seconds,
+            reason = reason,
+        )
+        log(if (showAttempts) "Retrying in $seconds s (attempt ${failures + 1} of ${timing.maxAttempts})" else "Retrying in $seconds s")
         withTimeoutOrNull(wait) { lost?.await() ?: awaitCancellation() }
     }
 

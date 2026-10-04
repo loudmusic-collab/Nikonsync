@@ -1,10 +1,12 @@
 package com.loudmusic.dropfoto.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -48,11 +50,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.loudmusic.dropfoto.connection.CameraPairing
 import com.loudmusic.dropfoto.connection.CameraService
 import com.loudmusic.dropfoto.connection.CameraWifiProvider
 import com.loudmusic.dropfoto.connection.ConnectionMode
 import com.loudmusic.dropfoto.connection.ConnectionSettings
 import com.loudmusic.dropfoto.connection.ConnectionState
+import com.loudmusic.dropfoto.connection.KnownCamera
 import com.loudmusic.dropfoto.connection.LogLine
 import java.time.format.DateTimeFormatter
 
@@ -69,6 +73,7 @@ fun ConnectionScreen(vm: MainViewModel = viewModel()) {
     val log by vm.log.collectAsStateWithLifecycle()
     val card by vm.card.collectAsStateWithLifecycle()
     val listing by vm.listing.collectAsStateWithLifecycle()
+    val paired by vm.pairedCamera.collectAsStateWithLifecycle()
 
     val permissions = remember {
         buildList {
@@ -86,6 +91,24 @@ fun ConnectionScreen(vm: MainViewModel = viewModel()) {
         CameraService.connect(context)
     }
 
+    val pairResult = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            CameraPairing.parseResult(result.data)?.let(vm::onPaired)
+        } else {
+            vm.log("Pairing cancelled")
+        }
+    }
+    val startPairing = {
+        val activity = context as Activity
+        vm.log("Pairing: pick your camera's network in the list")
+        CameraPairing.start(
+            activity,
+            onPending = { sender -> pairResult.launch(IntentSenderRequest.Builder(sender).build()) },
+            onPaired = vm::onPaired,
+            onFailure = { vm.log("Pairing failed: $it") },
+        )
+    }
+
     Scaffold(topBar = { TopAppBar(title = { Text("DropFoto · connection test") }) }) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
@@ -94,6 +117,11 @@ fun ConnectionScreen(vm: MainViewModel = viewModel()) {
         ) {
             item {
                 SettingsCard(settings, enabled = !state.isActive, onChange = vm::updateSettings)
+            }
+            if (settings.mode == ConnectionMode.CAMERA_WIFI) {
+                item {
+                    PairingCard(paired, enabled = !state.isActive, onPair = startPairing, onForget = vm::forgetCamera)
+                }
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -188,6 +216,32 @@ private fun SettingsCard(settings: ConnectionSettings, enabled: Boolean, onChang
 }
 
 @Composable
+private fun PairingCard(paired: KnownCamera?, enabled: Boolean, onPair: () -> Unit, onForget: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Camera pairing", style = MaterialTheme.typography.titleMedium)
+            if (paired != null) {
+                Text("Paired with ${paired.ssid}")
+                Text(
+                    "Reconnects to this camera without asking for approval.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                Text(
+                    "Not paired yet. Turn on the camera's Wi-Fi and tap Pair camera once; " +
+                        "after that Android won't ask to approve every reconnect.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onPair, enabled = enabled) { Text(if (paired == null) "Pair camera" else "Pair again") }
+                if (paired != null) TextButton(onClick = onForget, enabled = enabled) { Text("Forget") }
+            }
+        }
+    }
+}
+
+@Composable
 private fun StatusCard(state: ConnectionState) {
     Card(Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -208,10 +262,18 @@ private fun StatusCard(state: ConnectionState) {
 
 private fun describe(state: ConnectionState): Pair<String, List<String>> = when (state) {
     ConnectionState.Idle -> "Not connected" to listOf("Turn on the camera's Wi-Fi, then tap Connect.")
-    ConnectionState.JoiningNetwork -> "Joining the camera's Wi-Fi…" to listOf("Approve the connection if Android asks.")
+    is ConnectionState.JoiningNetwork ->
+        if (state.rejoining) {
+            "Waiting for the camera's Wi-Fi…" to listOf("The connection dropped. DropFoto reconnects as soon as the camera's Wi-Fi is back (keeps trying for 5 minutes).")
+        } else {
+            "Joining the camera's Wi-Fi…" to listOf("Approve the connection if Android asks.")
+        }
     is ConnectionState.Connecting -> "Connecting to the camera…" to listOf("Attempt ${state.attempt}")
     is ConnectionState.Reconnecting ->
-        "Reconnecting in ${state.delaySeconds} s" to listOf(state.reason, "Attempt ${state.attempt} of ${state.maxAttempts}")
+        "Reconnecting in ${state.delaySeconds} s" to listOfNotNull(
+            state.reason,
+            if (state.maxAttempts > 0) "Attempt ${state.attempt} of ${state.maxAttempts}" else null,
+        )
     is ConnectionState.Failed -> "Connection failed" to listOf(state.message)
     is ConnectionState.Connected -> {
         val c = state.camera

@@ -28,6 +28,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-feature android:name="android.hardware.wifi" android:required="true" />
+    <!-- One-time camera pairing (companion device). Optional: without it, Android asks to approve each connect. -->
+    <uses-feature android:name="android.software.companion_device_setup" android:required="false" />
 
     <application
         android:name=".DropFotoApp"

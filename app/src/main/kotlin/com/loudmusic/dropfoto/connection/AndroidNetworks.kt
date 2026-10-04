@@ -40,6 +40,7 @@ class CameraWifiProvider(
     private val wantedSsid = ssid.trim()
 
     override suspend fun acquire(reconnecting: Boolean): CameraNetwork {
+        requireWifiOn(context)
         val known = knownCameras.knownCamera()?.takeIf { wantedSsid.isEmpty() || it.ssid == wantedSsid }
         if (known != null) {
             log("Looking for ${known.ssid} (${known.bssid})")
@@ -98,7 +99,12 @@ class CameraWifiProvider(
             .filter { r -> if (wantedSsid.isEmpty()) r.SSID.startsWith(NIKON_SSID_PREFIX) else r.SSID == wantedSsid }
             .maxByOrNull { it.level }
         if (match == null) {
-            log("Couldn't find the camera in the Wi-Fi scan results; Android may ask to approve again next time")
+            @Suppress("DEPRECATION")
+            val nikon = results.count { it.SSID.startsWith(NIKON_SSID_PREFIX) }
+            log(
+                "Couldn't find the camera in the Wi-Fi scan results (${results.size} networks, $nikon Nikon). " +
+                    "Tap Pair camera so reconnects don't need approval.",
+            )
             return
         }
         @Suppress("DEPRECATION")
@@ -126,11 +132,18 @@ class CurrentWifiProvider(
     private val timeoutMillis: Int = 10_000,
 ) : CameraNetworkProvider {
     override suspend fun acquire(reconnecting: Boolean): CameraNetwork {
+        requireWifiOn(context)
         val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
         return requestNetwork(context, request, timeoutMillis, "The phone isn't connected to any Wi-Fi network.")
+    }
+}
+
+private fun requireWifiOn(context: Context) {
+    if (!context.getSystemService(WifiManager::class.java).isWifiEnabled) {
+        throw NetworkUnavailableException("The phone's Wi-Fi is turned off. Turn it on to reach the camera.")
     }
 }
 

@@ -4,7 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.loudmusic.dropfoto.DropFotoApp
+import com.loudmusic.dropfoto.connection.CameraPairing
 import com.loudmusic.dropfoto.connection.ConnectionSettings
+import com.loudmusic.dropfoto.connection.KnownCamera
 import com.loudmusic.dropfoto.ptpip.CameraFile
 import com.loudmusic.dropfoto.ptpip.PtpException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,7 +46,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         app.settings.save(settings)
     }
 
+    val pairedCamera: StateFlow<KnownCamera?> = app.settings.knownCameraFlow
+
     fun disconnect() = controller.disconnect()
+
+    fun log(text: String) = controller.log(text)
+
+    fun onPaired(camera: KnownCamera) {
+        if (camera == pairedCamera.value) return
+        app.settings.rememberCamera(camera)
+        controller.log("Paired with ${camera.ssid} (${camera.bssid})")
+    }
+
+    fun forgetCamera() {
+        CameraPairing.forget(app)
+        app.settings.forgetCamera()
+        controller.log("Forgot the paired camera")
+    }
 
     fun listFiles() {
         val camera = camera.value ?: return

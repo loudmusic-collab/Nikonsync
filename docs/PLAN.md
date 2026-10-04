@@ -219,9 +219,11 @@ chunked downloads, resuming after a mid-transfer drop, single-client refusal, ev
 - **Listing is slow:** 671 files (11.1 GB, 333 RAW+JPEG pairs) took **82 s**, about 120 ms per
   GetObjectInfo. One request at a time is a PTP rule, so Phase 3 must not make you wait for a full
   listing (see below).
-- Android asked to approve the camera network again on reconnect (pop-up, tap to connect). Fixed:
-  after the first approval the app remembers the camera's SSID + BSSID and asks for exactly that
-  access point, which Android grants without asking. To confirm on the S21.
+- Android asked to approve the camera network again on reconnect (pop-up, tap to connect). Reading
+  the camera's BSSID from Wi-Fi scan results didn't work on the S21 (the camera wasn't in the list).
+  Now: a one-time **Pair camera** step through the companion-device manager gives the exact SSID +
+  BSSID, and the app requests exactly that access point, which Android treats as pre-approved.
+  Rejoining after a drop keeps trying for 5 minutes. To confirm on the S21.
 - Still to check: 30 minutes with the screen off.
 - `WifiConnector` (specifier request, network callbacks, socket factory, WifiLock)
 - `CameraService` foreground service + state machine + keep-alive + reconnect
