@@ -266,6 +266,11 @@ fetches to one at a time (each was queueing ahead of download chunks), grows the
 when the camera's per-request start-up time dominates (up to 8 MB), and logs a per-file breakdown
 (data flowing / camera start-up / queued) to find the real bottleneck.
 
+**v0.2.1 regression:** every download failed with "GetPartialObject failed: StoreNotAvailable". Most
+likely the D5500 refuses partial reads above some size, and v0.2.1 had started growing pieces past
+the 1 MB that worked in v0.2.0. v0.2.2 halves the piece on a refusal, remembers the largest size the
+camera accepts for the connection (logged), and waits and retries when the camera is briefly busy.
+
 ### Phase 5: Polish and hardening
 - Error messages in plain language, onboarding, settings, dark theme, and handling for
   "camera battery low" and "card removed"

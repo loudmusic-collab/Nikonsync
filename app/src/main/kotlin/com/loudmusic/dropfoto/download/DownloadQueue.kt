@@ -74,6 +74,8 @@ class DownloadQueue(
     private val pending = ArrayList<CardFile>()
     private var worker: Job? = null
 
+    @Volatile private var reportedCap = PtpCamera.MAX_CHUNK_SIZE
+
     /** Bytes of each file already counted in this batch's progress (so resumes aren't double-counted). */
     private val credited = HashMap<String, Long>()
 
@@ -217,6 +219,10 @@ class DownloadQueue(
                     lastTime = now
                     synchronized(lock) { credited[file.key] = bytes }
                 }
+            }
+            if (cam.partialReadCap != reportedCap) {
+                reportedCap = cam.partialReadCap
+                log("Camera accepts download pieces up to ${reportedCap / 1024} KB")
             }
             val timing = describeTiming(file.size - resumeFrom, (System.nanoTime() - started) / 1_000_000, chunks)
             store.publish(file, part)

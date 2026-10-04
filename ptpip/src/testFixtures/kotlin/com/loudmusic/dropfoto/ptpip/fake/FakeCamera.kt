@@ -78,6 +78,10 @@ public class FakeCamera(
         val serialNumber: String = "FAKE0000001",
         val supportsPartialObject: Boolean = true,
         val supportsLargeThumb: Boolean = false,
+        /** Refuse partial reads bigger than this with StoreNotAvailable, as the D5500 appears to. */
+        val maxPartialReadBytes: Int = Int.MAX_VALUE,
+        /** Refuse this many partial reads of any size with DeviceBusy first, like a briefly busy camera. */
+        val busyPartialReads: Int = 0,
         /** Delay before answering each GetPartialObject, like a camera slow to start each read. */
         val partialReadLatencyMillis: Long = 0,
         /** Advertise and answer MTP GetObjectPropList (bulk listing). */
@@ -101,6 +105,7 @@ public class FakeCamera(
     private val connectionAttemptCount = AtomicInteger(0)
 
     @Volatile private var busyUntil = 0L
+    private val busyRemaining = AtomicInteger(options.busyPartialReads)
     @Volatile private var dropAfterObjectBytes: Long? = null
 
     public val port: Int get() = server.localPort
@@ -350,6 +355,8 @@ public class FakeCamera(
                 val obj = find(p) ?: return true.also { respond(ResponseCode.INVALID_OBJECT_HANDLE) }
                 val offset = p.getOrElse(1) { 0 }.toLong() and 0xFFFFFFFFL
                 val max = p.getOrElse(2) { 0 }.toLong() and 0xFFFFFFFFL
+                if (max > options.maxPartialReadBytes) return true.also { respond(ResponseCode.STORE_NOT_AVAILABLE) }
+                if (busyRemaining.getAndDecrement() > 0) return true.also { respond(ResponseCode.DEVICE_BUSY) }
                 if (offset > obj.data.size) return true.also { respond(ResponseCode.INVALID_PARAMETER) }
                 val end = minOf(obj.data.size.toLong(), offset + max).toInt()
                 val slice = obj.data.copyOfRange(offset.toInt(), end)

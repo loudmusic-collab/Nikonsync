@@ -9,6 +9,7 @@ import com.loudmusic.dropfoto.gallery.DownloadChoice
 import com.loudmusic.dropfoto.gallery.IndexStatus
 import com.loudmusic.dropfoto.gallery.ObjectCache
 import com.loudmusic.dropfoto.gallery.groupShots
+import com.loudmusic.dropfoto.ptpip.OperationCode
 import com.loudmusic.dropfoto.ptpip.PtpIpConfig
 import com.loudmusic.dropfoto.ptpip.fake.FakeCamera
 import kotlinx.coroutines.CompletableDeferred
@@ -132,10 +133,12 @@ class DownloadQueueTest {
         assertEquals(0, done.failed)
         assertContentEquals(FakeCamera.bytes(900_000, 1003), File(tmp.root, "saved/DSC_0003.NEF").readBytes())
         // The link really dropped and came back...
-        assertEquals(2, rig.fake.requests.count { it.code == com.loudmusic.dropfoto.ptpip.OperationCode.OPEN_SESSION })
-        // ...and the download resumed rather than restarted: about one file's worth of bytes requested.
-        val requested = rig.fake.requests.filter { it.code == com.loudmusic.dropfoto.ptpip.OperationCode.GET_PARTIAL_OBJECT }.sumOf { it.params[2].toLong() }
-        assertTrue(requested < 1_400_000, "requested $requested bytes")
+        val requests = rig.fake.requests.toList()
+        val secondSession = requests.withIndex().filter { it.value.code == OperationCode.OPEN_SESSION }.map { it.index }
+        assertEquals(2, secondSession.size)
+        // ...and the first read on the new connection continued from the saved bytes, not from zero.
+        val firstAfter = requests.drop(secondSession[1]).first { it.code == OperationCode.GET_PARTIAL_OBJECT }
+        assertTrue(firstAfter.params[1] >= 300_000, "resumed at ${firstAfter.params[1]}")
     }
 
     @Test

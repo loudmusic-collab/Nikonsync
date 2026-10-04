@@ -162,6 +162,48 @@ class PtpCameraTest {
     }
 
     @Test
+    fun `shrinks pieces when the camera refuses big partial reads`() = test {
+        // Slow start-up makes pieces grow; the camera refuses anything over 300 KB.
+        val fake = fake(FakeCamera.Options(partialReadLatencyMillis = 30, maxPartialReadBytes = 300_000))
+        val camera = PtpCamera.connect(config(fake))
+        val nef = camera.files().toList().first { it.filename == "DSC_0001.NEF" }
+        val out = ByteArrayOutputStream()
+        camera.download(nef.handle, nef.size, out, chunkSize = 128 * 1024)
+        assertContentEquals(FakeCamera.bytes(1_500_000, 1001), out.toByteArray())
+        assertTrue(camera.partialReadCap <= 300_000, "cap ${camera.partialReadCap}")
+
+        // The next file starts within the learned limit: no more refusals.
+        val refusedBefore = fake.requests.count { it.code == OperationCode.GET_PARTIAL_OBJECT && it.params[2] > 300_000 }
+        val jpg = camera.files().toList().first { it.filename == "DSC_0002.JPG" }
+        camera.download(jpg.handle, jpg.size, ByteArrayOutputStream(), chunkSize = 128 * 1024)
+        val refusedAfter = fake.requests.count { it.code == OperationCode.GET_PARTIAL_OBJECT && it.params[2] > 300_000 }
+        assertEquals(refusedBefore, refusedAfter)
+        camera.disconnect()
+    }
+
+    @Test
+    fun `waits and retries when the camera is briefly busy`() = test {
+        val fake = fake(FakeCamera.Options(busyPartialReads = 2))
+        val camera = PtpCamera.connect(config(fake))
+        val jpg = camera.files().toList().first { it.filename == "DSC_0001.JPG" }
+        val out = ByteArrayOutputStream()
+        camera.download(jpg.handle, jpg.size, out)
+        assertContentEquals(FakeCamera.bytes(300_000, 1), out.toByteArray())
+        camera.disconnect()
+    }
+
+    @Test
+    fun `gives up with the camera's answer when it keeps refusing`() = test {
+        val fake = fake(FakeCamera.Options(maxPartialReadBytes = 1_000)) // below the smallest piece
+        val camera = PtpCamera.connect(config(fake))
+        val jpg = camera.files().toList().first { it.filename == "DSC_0001.JPG" }
+        val error = assertFailsWith<PtpResponseException> { camera.download(jpg.handle, jpg.size, ByteArrayOutputStream()) }
+        assertEquals(ResponseCode.STORE_NOT_AVAILABLE, error.responseCode)
+        assertTrue(camera.isOpen)
+        camera.disconnect()
+    }
+
+    @Test
     fun `falls back to GetObject when partial reads are unsupported`() = test {
         val fake = fake(FakeCamera.Options(supportsPartialObject = false))
         val camera = PtpCamera.connect(config(fake))

@@ -1,5 +1,6 @@
 package com.loudmusic.dropfoto.ptpip
 
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.flow
@@ -37,6 +38,14 @@ public class PtpCamera private constructor(
     public val isOpen: Boolean get() = connection.isOpen
     public val isNikon: Boolean get() = deviceInfo.vendorExtensionId == DeviceInfo.VENDOR_NIKON ||
         deviceInfo.manufacturer.contains("Nikon", ignoreCase = true)
+
+    /**
+     * Largest partial read the camera has accepted so far on this connection. Some cameras refuse
+     * big GetPartialObject requests (the D5500 answers StoreNotAvailable), so [download] lowers this
+     * when a request is refused and never grows past it again.
+     */
+    public var partialReadCap: Int = MAX_CHUNK_SIZE
+        private set
 
     public suspend fun getStorageIds(): List<Int> =
         PtpReader(dataIn(OperationCode.GET_STORAGE_IDS)).u32Array()
@@ -179,20 +188,34 @@ public class PtpCamera private constructor(
         require(startOffset in 0..size) { "startOffset $startOffset outside 0..$size" }
         val sink = OutputStreamSink(out)
         if (deviceInfo.supports(OperationCode.GET_PARTIAL_OBJECT)) {
-            var offset = startOffset
-            var piece = chunkSize
-            onProgress(offset, size)
-            while (offset < size) {
-                val want = minOf(piece.toLong(), size - offset).toInt()
-                val stats = getPartialObjectTimed(handle, offset, want, sink)
-                val got = stats.bytes
-                if (got <= 0) throw PtpException("Camera returned no data at offset $offset of $size")
-                offset += got
+            // Position comes from what was actually written, so a request that fails after sending
+            // some data can neither duplicate nor skip bytes.
+            fun offset() = startOffset + sink.bytesWritten
+            var piece = minOf(chunkSize, partialReadCap)
+            var refusals = 0
+            onProgress(offset(), size)
+            while (offset() < size) {
+                val at = offset()
+                val want = minOf(piece.toLong(), size - at).toInt()
+                val stats = try {
+                    getPartialObjectTimed(handle, at, want, sink)
+                } catch (e: PtpResponseException) {
+                    if (++refusals > MAX_REFUSALS || e.responseCode !in RETRYABLE_RESPONSES) throw e
+                    if (e.responseCode != ResponseCode.DEVICE_BUSY && want > MIN_CHUNK_SIZE) {
+                        // Probably too big a request for this camera: halve it and remember the limit.
+                        partialReadCap = maxOf(MIN_CHUNK_SIZE, want / 2)
+                        piece = partialReadCap
+                    }
+                    delay(RETRY_DELAY_MILLIS * refusals)
+                    continue
+                }
+                if (stats.bytes <= 0) throw PtpException("Camera returned no data at offset $at of $size")
+                refusals = 0
                 onChunk(stats)
-                onProgress(offset, size)
+                onProgress(offset(), size)
                 val busy = stats.firstByteMillis + stats.transferMillis
                 if (adaptive && busy > 0 && stats.firstByteMillis * 4 > busy) {
-                    piece = minOf(piece * 2, MAX_CHUNK_SIZE)
+                    piece = minOf(piece * 2, partialReadCap)
                 }
             }
             out.flush()
@@ -257,6 +280,19 @@ public class PtpCamera private constructor(
     public companion object {
         public const val DEFAULT_CHUNK_SIZE: Int = 1 shl 20
         public const val MAX_CHUNK_SIZE: Int = 8 shl 20
+        public const val MIN_CHUNK_SIZE: Int = 64 * 1024
+        private const val MAX_REFUSALS = 6
+        private const val RETRY_DELAY_MILLIS = 300L
+
+        /** Answers to a partial read that are worth retrying, possibly with a smaller piece. */
+        private val RETRYABLE_RESPONSES = setOf(
+            ResponseCode.STORE_NOT_AVAILABLE,
+            ResponseCode.DEVICE_BUSY,
+            ResponseCode.GENERAL_ERROR,
+            ResponseCode.INVALID_PARAMETER,
+            ResponseCode.PARAMETER_NOT_SUPPORTED,
+            ResponseCode.INCOMPLETE_TRANSFER,
+        )
         public const val DEFAULT_SESSION_ID: Int = 1
 
         /**
