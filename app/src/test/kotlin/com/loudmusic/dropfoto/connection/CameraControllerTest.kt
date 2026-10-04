@@ -152,7 +152,7 @@ class CameraControllerTest {
         synchronized(provider.networks) { provider.networks.single() }.lost.complete(Unit)
         controller.awaitState { it is ConnectionState.JoiningNetwork && it.rejoining }
         val failed = controller.awaitState { it is ConnectionState.Failed } as ConnectionState.Failed
-        assertTrue("didn't come back" in failed.message, failed.message)
+        assertEquals("Camera Wi-Fi turned off", failed.title)
         assertTrue(provider.acquired.get() > 4, "kept retrying for the whole window, not just maxAttempts")
     }
 

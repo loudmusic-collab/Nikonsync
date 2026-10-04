@@ -41,8 +41,12 @@ class CameraController(
         val backoffMillis: List<Long> = listOf(1_000, 2_000, 4_000, 8_000, 15_000),
         /** Consecutive failed attempts before giving up and reporting [ConnectionState.Failed]. */
         val maxAttempts: Int = 8,
-        /** After the camera's Wi-Fi disappears, how long to keep trying to rejoin it. */
-        val rejoinWindowMillis: Long = 5 * 60_000,
+        /**
+         * After the camera's Wi-Fi disappears, how long to keep trying to rejoin it. Long enough to ride
+         * out a glitch; short enough that switching the camera's Wi-Fi off lets the phone go back to its
+         * normal Wi-Fi instead of being held searching for the camera.
+         */
+        val rejoinWindowMillis: Long = 30_000,
     )
 
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
@@ -90,7 +94,7 @@ class CameraController(
         _log.update { (it + line).takeLast(MAX_LOG_LINES) }
     }
 
-    private class GiveUp(override val message: String) : Exception(message)
+    private class GiveUp(override val message: String, val title: String = "Connection failed") : Exception(message)
 
     private suspend fun session(provider: CameraNetworkProvider, config: (SocketFactory) -> PtpIpConfig) {
         var outcome: ConnectionState = ConnectionState.Idle
@@ -110,7 +114,7 @@ class CameraController(
                     if (lostAt == null) throw GiveUp(reason)
                     log(reason)
                     if (System.currentTimeMillis() - lostAt > timing.rejoinWindowMillis) {
-                        throw GiveUp("The camera's Wi-Fi didn't come back. Tap Connect when it's on again.")
+                        throw GiveUp("Tap Connect when it's back on.", title = "Camera Wi-Fi turned off")
                     }
                     failures++
                     backoff(failures, reason, lost = null, showAttempts = false)
@@ -129,7 +133,7 @@ class CameraController(
                 backoff(failures, "Camera Wi-Fi network lost", lost = null, showAttempts = false)
             }
         } catch (e: GiveUp) {
-            outcome = ConnectionState.Failed(e.message)
+            outcome = ConnectionState.Failed(e.message, e.title)
             log("Stopped: ${e.message}")
         } finally {
             _camera.value = null

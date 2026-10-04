@@ -264,7 +264,7 @@ private fun describe(state: ConnectionState): Pair<String, List<String>> = when 
     ConnectionState.Idle -> "Not connected" to listOf("Turn on the camera's Wi-Fi, then tap Connect.")
     is ConnectionState.JoiningNetwork ->
         if (state.rejoining) {
-            "Waiting for the camera's Wi-Fi…" to listOf("The connection dropped. DropFoto reconnects as soon as the camera's Wi-Fi is back (keeps trying for 5 minutes).")
+            "Waiting for the camera's Wi-Fi…" to listOf("The connection dropped. Trying to reconnect for 30 seconds; after that, tap Connect.")
         } else {
             "Joining the camera's Wi-Fi…" to listOf("Approve the connection if Android asks.")
         }
@@ -274,7 +274,7 @@ private fun describe(state: ConnectionState): Pair<String, List<String>> = when 
             state.reason,
             if (state.maxAttempts > 0) "Attempt ${state.attempt} of ${state.maxAttempts}" else null,
         )
-    is ConnectionState.Failed -> "Connection failed" to listOf(state.message)
+    is ConnectionState.Failed -> state.title to listOf(state.message)
     is ConnectionState.Connected -> {
         val c = state.camera
         "Connected to ${c.manufacturer} ${c.model}" to listOf(

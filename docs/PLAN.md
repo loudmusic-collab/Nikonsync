@@ -223,7 +223,9 @@ chunked downloads, resuming after a mid-transfer drop, single-client refusal, ev
   the camera's BSSID from Wi-Fi scan results didn't work on the S21 (the camera wasn't in the list).
   Now: a one-time **Pair camera** step through the companion-device manager gives the exact SSID +
   BSSID, and the app requests exactly that access point, which Android treats as pre-approved.
-  Rejoining after a drop keeps trying for 5 minutes. To confirm on the S21.
+- **Decision (owner):** turning off the camera's Wi-Fi is deliberate, so the app retries for only
+  30 s (enough for a glitch), then stops, releases the network so the phone returns to its normal
+  Wi-Fi, and shows "Camera Wi-Fi turned off. Tap Connect when it's back on". Reconnecting is one tap.
 - Still to check: 30 minutes with the screen off.
 - `WifiConnector` (specifier request, network callbacks, socket factory, WifiLock)
 - `CameraService` foreground service + state machine + keep-alive + reconnect

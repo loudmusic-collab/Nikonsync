@@ -127,13 +127,13 @@ class CameraService : LifecycleService() {
         is ConnectionState.JoiningNetwork -> if (state.rejoining) "Waiting for camera Wi-Fi…" else "Joining camera Wi-Fi…"
         is ConnectionState.Connecting -> "Connecting to camera…"
         is ConnectionState.Reconnecting -> "Reconnecting to camera…"
-        is ConnectionState.Failed -> "Camera connection failed"
+        is ConnectionState.Failed -> state.title
         ConnectionState.Idle -> "Not connected"
     }
 
     private fun detail(state: ConnectionState) = when (state) {
         is ConnectionState.Connected -> "Link checked ${state.checks} ${if (state.checks == 1) "time" else "times"}"
-        is ConnectionState.JoiningNetwork -> if (state.rejoining) "Reconnects automatically when it's back" else ""
+        is ConnectionState.JoiningNetwork -> if (state.rejoining) "Trying to reconnect for a few seconds" else ""
         is ConnectionState.Reconnecting -> state.reason
         is ConnectionState.Failed -> state.message
         else -> ""

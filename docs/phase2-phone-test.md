@@ -31,10 +31,13 @@ downloads come in Phases 3 and 4.
 8. **Stability:** turn the screen off and leave the phone for 30 minutes. The notification shows
    "Link checked N times". Afterwards, check that the count kept rising and look in the log for
    any `lost` / `Retrying` lines.
-9. **Recovery:** while connected, turn the **camera's** Wi-Fi off, wait 10 seconds, and turn it
-   back on. The app shows *Waiting for the camera's Wi-Fi…* and then *Connected* again, without
-   any pop-up. It keeps waiting for up to 5 minutes. (Turning off the **phone's** Wi-Fi is a
-   different test: the app says the phone's Wi-Fi is off and waits for it.)
+9. **Short drop:** while connected, briefly take the phone out of the camera's range (or turn the
+   camera's Wi-Fi off and on within a few seconds). The app shows *Waiting for the camera's Wi-Fi…*
+   and reconnects by itself within 30 seconds.
+10. **Camera Wi-Fi off:** turn the camera's Wi-Fi off and leave it off. After 30 seconds the app
+    shows *Camera Wi-Fi turned off* and lets go of the network, and the phone goes back to its normal
+    Wi-Fi. Turn the camera's Wi-Fi back on and tap **Connect**: it should connect without an
+    approval pop-up once the camera is paired.
 
 Also worth trying: toggle mobile data off and on while connected. Nothing should change.
 

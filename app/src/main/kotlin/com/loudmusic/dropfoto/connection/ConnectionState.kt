@@ -23,7 +23,8 @@ sealed interface ConnectionState {
     data class Reconnecting(val attempt: Int, val maxAttempts: Int, val delaySeconds: Long, val reason: String) :
         ConnectionState
 
-    data class Failed(val message: String) : ConnectionState
+    /** The session ended without the user asking. [title] is the headline, [message] what to do next. */
+    data class Failed(val message: String, val title: String = "Connection failed") : ConnectionState
 
     /** True while the controller is working on, or holding, a connection. */
     val isActive: Boolean get() = this !is Idle && this !is Failed
