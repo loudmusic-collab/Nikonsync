@@ -39,7 +39,7 @@ downloads come in Phases 3 and 4.
 Also worth trying: toggle mobile data off and on while connected. Nothing should change.
 
 **Battery settings** opens Android's battery-optimization list. If the link drops only with the
-screen off, set DropFoto to *Unrestricted* there, then repeat test 7.
+screen off, set DropFoto to *Unrestricted* there, then repeat test 8.
 
 ## Without the camera
 
