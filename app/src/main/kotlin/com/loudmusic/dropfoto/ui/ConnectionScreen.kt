@@ -218,7 +218,7 @@ private fun describe(state: ConnectionState): Pair<String, List<String>> = when 
         "Connected to ${c.manufacturer} ${c.model}" to listOf(
             "Firmware ${c.firmware} · serial ${c.serialNumber}",
             "Resumable downloads: ${if (c.supportsResume) "yes" else "no"} · large previews: ${if (c.supportsLargePreview) "yes" else "no"}",
-            "Link checked ${state.checks} times" + (state.lastCheckMillis?.let { ", last took $it ms" } ?: ""),
+            "Link checked ${state.checks} ${if (state.checks == 1) "time" else "times"}" + (state.lastCheckMillis?.let { ", last took $it ms" } ?: ""),
         )
     }
 }

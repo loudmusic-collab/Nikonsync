@@ -206,7 +206,18 @@ chunked downloads, resuming after a mid-transfer drop, single-client refusal, ev
 **Status:** built. `CameraWifiProvider` / `CurrentWifiProvider` (network request + socket factory),
 `CameraController` (state machine, keep-alive, reconnect; 7 tests against the simulated camera),
 `CameraService` (connectedDevice foreground service with Wi-Fi and wake locks) and a test screen.
-The exit criteria still need a run on the S21 Ultra.
+
+**First run on the real hardware** (Galaxy S21 Ultra, Android 15 + D5500 firmware V1.01, 2026-10-04):
+- Joined the camera Wi-Fi and connected in 9 s on the first try, with the SSID left blank (prefix match).
+- The camera answers PTP/IP probes. Link checks take 15–56 ms.
+- The camera advertises **GetPartialObject** (resumable downloads) and Nikon **GetLargeThumb** (bigger previews).
+- **Reconnect works:** after the camera's Wi-Fi went away, the app rejoined and reconnected in 29 s
+  by itself.
+- **Listing is slow:** 671 files (11.1 GB, 333 RAW+JPEG pairs) took **82 s**, about 120 ms per
+  GetObjectInfo. One request at a time is a PTP rule, so Phase 3 must not make you wait for a full
+  listing (see below).
+- Still to check: 30 minutes with the screen off, and whether Android asks to approve the network
+  again on reconnect.
 - `WifiConnector` (specifier request, network callbacks, socket factory, WifiLock)
 - `CameraService` foreground service + state machine + keep-alive + reconnect
 - A minimal debug screen that shows the state and the `GetDeviceInfo` output
@@ -215,6 +226,13 @@ The exit criteria still need a run on the S21 Ultra.
 
 ### Phase 3: Gallery
 - Room index, progressive `GetObjectInfo`, Coil fetcher, lazy grid, filters, selection
+- **Listing speed** (82 s for 671 files on the real camera):
+  - **Show as you go:** the grid fills newest-first as each ObjectInfo arrives, and thumbnails
+    for visible tiles are fetched between listing requests.
+  - **Cache:** ObjectInfo is stored in Room by camera serial + handle, checked against file name and
+    size. Reconnecting only fetches info for handles the cache hasn't seen, so it takes a few seconds.
+  - **Bulk listing:** if the camera advertises MTP `GetObjectPropList` (0x9805), use it to fetch names,
+    sizes and dates for the whole card in one request. Feature-detected; otherwise fall back to the above.
 - **Exit criteria:** a card with 1,000+ files shows its first thumbnails within a few
   seconds and scrolls smoothly
 

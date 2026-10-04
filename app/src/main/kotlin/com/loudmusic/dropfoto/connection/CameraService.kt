@@ -132,7 +132,7 @@ class CameraService : LifecycleService() {
     }
 
     private fun detail(state: ConnectionState) = when (state) {
-        is ConnectionState.Connected -> "Link checked ${state.checks} times"
+        is ConnectionState.Connected -> "Link checked ${state.checks} ${if (state.checks == 1) "time" else "times"}"
         is ConnectionState.Reconnecting -> state.reason
         is ConnectionState.Failed -> state.message
         else -> ""
