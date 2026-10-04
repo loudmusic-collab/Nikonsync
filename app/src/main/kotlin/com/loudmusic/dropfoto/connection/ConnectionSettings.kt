@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.util.Base64
 import androidx.core.content.edit
+import com.loudmusic.dropfoto.gallery.DownloadChoice
 import com.loudmusic.dropfoto.ptpip.PtpIpConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -87,6 +88,16 @@ class SettingsStore(context: Context) : KnownCameraStore {
         return KnownCamera(ssid, bssid)
     }
 
+    /** Default for the download button: JPEG unless the user picked something else. */
+    var downloadChoice: DownloadChoice
+        get() = runCatching { DownloadChoice.valueOf(prefs.getString(KEY_DOWNLOAD_CHOICE, null)!!) }.getOrDefault(DownloadChoice.JPEG)
+        set(value) = prefs.edit { putString(KEY_DOWNLOAD_CHOICE, value.name) }
+
+    /** Serial of the last camera connected, so its card can be shown while offline. */
+    var lastCameraSerial: String?
+        get() = prefs.getString(KEY_LAST_SERIAL, null)
+        set(value) = prefs.edit { putString(KEY_LAST_SERIAL, value) }
+
     val friendlyName: String get() = "DropFoto (${Build.MODEL})".take(40)
 
     private companion object {
@@ -97,6 +108,8 @@ class SettingsStore(context: Context) : KnownCameraStore {
         const val KEY_PORT = "port"
         const val KEY_GUID = "guid"
         const val KEY_KNOWN_SSID = "known_ssid"
+        const val KEY_DOWNLOAD_CHOICE = "download_choice"
+        const val KEY_LAST_SERIAL = "last_serial"
         const val KEY_KNOWN_BSSID = "known_bssid"
     }
 }

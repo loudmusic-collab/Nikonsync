@@ -234,6 +234,11 @@ chunked downloads, resuming after a mid-transfer drop, single-client refusal, ev
   survives toggling mobile data and a camera Wi-Fi power cycle (it reconnects automatically)
 
 ### Phase 3: Gallery
+**Status:** built (v0.2.0), to be tried on the S21. Day-grouped grid with RAW+JPEG pairs as one tile,
+thumbnails rotated upright from each file's EXIF orientation (first 8 KB), cached on disk and shown
+offline. The card list is cached per camera (`ObjectCache`), checked against the camera, and
+read newest-first with bulk `GetObjectPropList` when available. New shots appear while connected.
+Viewer with Nikon large preview. Uses a small file-based cache instead of Room, which wasn't needed.
 - Room index, progressive `GetObjectInfo`, Coil fetcher, lazy grid, filters, selection
 - **Listing speed** (82 s for 671 files on the real camera):
   - **Show as you go:** the grid fills newest-first as each ObjectInfo arrives, and thumbnails
@@ -246,6 +251,10 @@ chunked downloads, resuming after a mid-transfer drop, single-client refusal, ev
   seconds and scrolls smoothly
 
 ### Phase 4: Downloads
+**Status:** built (v0.2.0), to be tried on the S21. JPEG / RAW / RAW + JPEG choice (default JPEG, remembered),
+JPEGs first, 1 MB chunks, resume after drops, MediaStore save to Pictures/DropFoto (NEF falls back to
+Download/DropFoto if refused), "already on phone" tracking, progress + speed + time left in the app
+and notification. The queue lives in memory: if Android kills the app, re-select and partial files resume.
 - Persistent queue, chunked resumable downloads, MediaStore publish, dedupe, notification
 - **Exit criteria:** with the screen off on the S21 Ultra, 50 JPEGs download with the default
   setting, then the RAW files for 10 of those shots are added afterwards. The queue survives one

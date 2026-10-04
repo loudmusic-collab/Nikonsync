@@ -17,7 +17,9 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.loudmusic.dropfoto.DropFotoApp
 import com.loudmusic.dropfoto.R
+import com.loudmusic.dropfoto.download.DownloadProgress
 import com.loudmusic.dropfoto.ui.MainActivity
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
@@ -37,7 +39,7 @@ class CameraService : LifecycleService() {
         ServiceCompat.startForeground(
             this,
             NOTIFICATION_ID,
-            notification(app.controller.state.value),
+            notification(app.controller.state.value, app.downloads.progress.value),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
         )
         when (intent?.action) {
@@ -47,8 +49,8 @@ class CameraService : LifecycleService() {
         if (!observing) {
             observing = true
             lifecycleScope.launch {
-                app.controller.state.collect { state ->
-                    getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(state))
+                combine(app.controller.state, app.downloads.progress) { state, downloads -> state to downloads }.collect { (state, downloads) ->
+                    getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(state, downloads))
                     if (state.isActive) {
                         acquireLocks()
                     } else {
@@ -103,23 +105,35 @@ class CameraService : LifecycleService() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    private fun notification(state: ConnectionState): Notification {
+    private fun notification(state: ConnectionState, downloads: DownloadProgress = DownloadProgress()): Notification {
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
         )
         val disconnect = PendingIntent.getService(
             this, 1, Intent(this, CameraService::class.java).setAction(ACTION_DISCONNECT), PendingIntent.FLAG_IMMUTABLE,
         )
+        val downloading = downloads.running && state is ConnectionState.Connected
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(title(state))
-            .setContentText(detail(state))
+            .setContentTitle(if (downloading) "Downloading ${downloads.done + 1} of ${downloads.total}" else title(state))
+            .setContentText(if (downloading) downloadDetail(downloads) else detail(state))
+            .apply {
+                if (downloading && downloads.batchBytesTotal > 0) {
+                    setProgress(1000, (downloads.batchBytesDone * 1000 / downloads.batchBytesTotal).toInt().coerceIn(0, 1000), false)
+                }
+            }
             .setContentIntent(open)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .addAction(0, getString(R.string.action_disconnect), disconnect)
             .build()
+    }
+
+    private fun downloadDetail(d: DownloadProgress): String {
+        val name = d.current?.filename ?: ""
+        val speed = if (d.bytesPerSecond > 0) " · %.1f MB/s".format(d.bytesPerSecond / 1e6) else ""
+        return name + speed
     }
 
     private fun title(state: ConnectionState) = when (state) {

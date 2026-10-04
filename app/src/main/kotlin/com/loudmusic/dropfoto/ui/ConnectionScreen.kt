@@ -20,7 +20,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,7 +53,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.loudmusic.dropfoto.connection.CameraPairing
 import com.loudmusic.dropfoto.connection.CameraService
 import com.loudmusic.dropfoto.connection.CameraWifiProvider
@@ -66,30 +69,14 @@ import java.time.format.DateTimeFormatter
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConnectionScreen(vm: MainViewModel = viewModel()) {
+fun ConnectionScreen(vm: MainViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     val state by vm.state.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val log by vm.log.collectAsStateWithLifecycle()
-    val card by vm.card.collectAsStateWithLifecycle()
-    val listing by vm.listing.collectAsStateWithLifecycle()
     val paired by vm.pairedCamera.collectAsStateWithLifecycle()
 
-    val permissions = remember {
-        buildList {
-            if (Build.VERSION.SDK_INT >= 33) {
-                add(Manifest.permission.NEARBY_WIFI_DEVICES)
-                add(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                add(Manifest.permission.ACCESS_FINE_LOCATION)
-                add(Manifest.permission.ACCESS_COARSE_LOCATION)
-            }
-        }.toTypedArray()
-    }
-    // Connect whatever the answer: a denied permission shows up as a clear failure in the log.
-    val requestPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        CameraService.connect(context)
-    }
+    val connect = rememberConnectAction()
 
     val pairResult = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -109,7 +96,16 @@ fun ConnectionScreen(vm: MainViewModel = viewModel()) {
         )
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("DropFoto · connection test") }) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Connection") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                },
+            )
+        },
+    ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -128,7 +124,7 @@ fun ConnectionScreen(vm: MainViewModel = viewModel()) {
                     if (state.isActive) {
                         Button(onClick = vm::disconnect) { Text("Disconnect") }
                     } else {
-                        Button(onClick = { requestPermissions.launch(permissions) }) { Text("Connect") }
+                        Button(onClick = connect) { Text("Connect") }
                     }
                     TextButton(onClick = {
                         context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
@@ -136,9 +132,6 @@ fun ConnectionScreen(vm: MainViewModel = viewModel()) {
                 }
             }
             item { StatusCard(state) }
-            if (state is ConnectionState.Connected) {
-                item { CardCard(card, listing, onList = vm::listFiles) }
-            }
             item { Text("Log", style = MaterialTheme.typography.titleMedium) }
             items(log.asReversed()) { LogRow(it) }
         }
@@ -285,27 +278,6 @@ private fun describe(state: ConnectionState): Pair<String, List<String>> = when 
     }
 }
 
-@Composable
-private fun CardCard(card: CardSummary?, listing: Boolean, onList: () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Memory card", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = onList, enabled = !listing) { Text(if (listing) "Listing…" else "List files") }
-            }
-            if (card != null) {
-                Text(
-                    "${card.files} files · ${formatSize(card.totalBytes)} · ${card.rawJpegPairs} RAW+JPEG pairs · " +
-                        "listed in ${"%.1f".format(card.seconds)} s",
-                )
-                card.newest.forEach { f ->
-                    Text("${f.filename}  ${formatSize(f.size)}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-    }
-}
-
 private val logTime = DateTimeFormatter.ofPattern("HH:mm:ss")
 
 @Composable
@@ -317,9 +289,31 @@ private fun LogRow(line: LogLine) {
     )
 }
 
-private fun formatSize(bytes: Long): String = when {
+internal fun formatSize(bytes: Long): String = when {
     bytes >= 1L shl 30 -> "%.1f GB".format(bytes / (1L shl 30).toDouble())
     bytes >= 1L shl 20 -> "%.1f MB".format(bytes / (1L shl 20).toDouble())
     bytes >= 1L shl 10 -> "%.0f KB".format(bytes / (1L shl 10).toDouble())
     else -> "$bytes B"
+}
+
+/** Asks for the Wi-Fi/notification permissions, then starts connecting with the saved settings. */
+@Composable
+fun rememberConnectAction(): () -> Unit {
+    val context = LocalContext.current
+    val permissions = remember {
+        buildList {
+            if (Build.VERSION.SDK_INT >= 33) {
+                add(Manifest.permission.NEARBY_WIFI_DEVICES)
+                add(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                add(Manifest.permission.ACCESS_FINE_LOCATION)
+                add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            }
+        }.toTypedArray()
+    }
+    // Connect whatever the answer: a denied permission shows up as a clear failure in the log.
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        CameraService.connect(context)
+    }
+    return { launcher.launch(permissions) }
 }

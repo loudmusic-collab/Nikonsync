@@ -1,9 +1,12 @@
 package com.loudmusic.dropfoto.ptpip.fake
 
+import com.loudmusic.dropfoto.ptpip.DataType
 import com.loudmusic.dropfoto.ptpip.DeviceInfo
 import com.loudmusic.dropfoto.ptpip.EventCode
 import com.loudmusic.dropfoto.ptpip.ObjectFormat
 import com.loudmusic.dropfoto.ptpip.ObjectInfo
+import com.loudmusic.dropfoto.ptpip.ObjectPropCode
+import com.loudmusic.dropfoto.ptpip.ObjectPropList
 import com.loudmusic.dropfoto.ptpip.ObjectQuery
 import com.loudmusic.dropfoto.ptpip.OperationCode
 import com.loudmusic.dropfoto.ptpip.PacketStream
@@ -75,6 +78,8 @@ public class FakeCamera(
         val serialNumber: String = "FAKE0000001",
         val supportsPartialObject: Boolean = true,
         val supportsLargeThumb: Boolean = false,
+        /** Advertise and answer MTP GetObjectPropList (bulk listing). */
+        val supportsObjectPropList: Boolean = false,
         /** Data phases are split into Data packets of at most this many bytes. */
         val dataPacketSize: Int = 32 * 1024,
         val respondToProbes: Boolean = true,
@@ -118,6 +123,7 @@ public class FakeCamera(
             )
             if (options.supportsPartialObject) add(OperationCode.GET_PARTIAL_OBJECT)
             if (options.supportsLargeThumb) add(OperationCode.NIKON_GET_LARGE_THUMB)
+            if (options.supportsObjectPropList) add(OperationCode.MTP_GET_OBJECT_PROP_LIST)
         },
         eventsSupported = listOf(EventCode.OBJECT_ADDED, EventCode.STORAGE_INFO_CHANGED),
         devicePropertiesSupported = emptyList(),
@@ -347,6 +353,29 @@ public class FakeCamera(
                 val slice = obj.data.copyOfRange(offset.toInt(), end)
                 if (!sendData(client, tid, slice, countsAsObjectData = true)) return false
                 respond(ResponseCode.OK, slice.size)
+            }
+            OperationCode.MTP_GET_OBJECT_PROP_LIST -> {
+                if (!options.supportsObjectPropList) return true.also { respond(ResponseCode.OPERATION_NOT_SUPPORTED) }
+                val elements = objects.flatMap { o ->
+                    listOf(
+                        ObjectPropList.Element(o.handle, ObjectPropCode.STORAGE_ID, o.storageId.toLong()),
+                        ObjectPropList.Element(o.handle, ObjectPropCode.OBJECT_FORMAT, o.format.toLong()),
+                        ObjectPropList.Element(o.handle, ObjectPropCode.OBJECT_SIZE, o.data.size.toLong()),
+                        ObjectPropList.Element(o.handle, ObjectPropCode.PARENT_OBJECT, o.parent.toLong()),
+                        ObjectPropList.Element(o.handle, ObjectPropCode.OBJECT_FILE_NAME, o.filename),
+                        ObjectPropList.Element(o.handle, ObjectPropCode.DATE_CREATED, o.captureDate),
+                    )
+                }
+                val types = mapOf(
+                    ObjectPropCode.STORAGE_ID to DataType.UINT32,
+                    ObjectPropCode.OBJECT_FORMAT to DataType.UINT16,
+                    ObjectPropCode.OBJECT_SIZE to DataType.UINT64,
+                    ObjectPropCode.PARENT_OBJECT to DataType.UINT32,
+                    ObjectPropCode.OBJECT_FILE_NAME to DataType.STRING,
+                    ObjectPropCode.DATE_CREATED to DataType.STRING,
+                )
+                sendData(client, tid, ObjectPropList.encode(elements, types))
+                respond(ResponseCode.OK)
             }
             else -> respond(ResponseCode.OPERATION_NOT_SUPPORTED)
         }

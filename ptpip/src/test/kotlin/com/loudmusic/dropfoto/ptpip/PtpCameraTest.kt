@@ -89,6 +89,27 @@ class PtpCameraTest {
     }
 
     @Test
+    fun `reads the whole card in one request when the camera supports it`() = test {
+        val fake = fake(FakeCamera.Options(supportsObjectPropList = true))
+        val camera = PtpCamera.connect(config(fake))
+        val infos = camera.getAllObjectInfosInOneRequest()!!
+        assertEquals(10, infos.size) // 2 folders + 8 files
+        val nef = infos.values.single { it.filename == "DSC_0001.NEF" }
+        assertEquals(1_500_000, nef.compressedSize)
+        assertEquals(2, nef.parent)
+        assertEquals(1, fake.requests.count { it.code == OperationCode.MTP_GET_OBJECT_PROP_LIST })
+        assertEquals(0, fake.requests.count { it.code == OperationCode.GET_OBJECT_INFO })
+        camera.disconnect()
+    }
+
+    @Test
+    fun `bulk listing returns null when unsupported`() = test {
+        val camera = PtpCamera.connect(config(fake()))
+        assertNull(camera.getAllObjectInfosInOneRequest())
+        camera.disconnect()
+    }
+
+    @Test
     fun `fetches thumbnails and reports missing ones`() = test {
         val fake = fake()
         val camera = PtpCamera.connect(config(fake))

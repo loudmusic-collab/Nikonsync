@@ -60,6 +60,9 @@ public object OperationCode {
     public const val GET_DEVICE_PROP_VALUE: Int = 0x1015
     public const val GET_PARTIAL_OBJECT: Int = 0x101B
 
+    // MTP extension: properties of many objects in one request.
+    public const val MTP_GET_OBJECT_PROP_LIST: Int = 0x9805
+
     // Nikon vendor extensions. Always feature-detect via DeviceInfo.operationsSupported.
     public const val NIKON_GET_LARGE_THUMB: Int = 0x90C4
     public const val NIKON_GET_PARTIAL_OBJECT_EX: Int = 0x9431
@@ -79,6 +82,7 @@ public object OperationCode {
         GET_DEVICE_PROP_DESC -> "GetDevicePropDesc"
         GET_DEVICE_PROP_VALUE -> "GetDevicePropValue"
         GET_PARTIAL_OBJECT -> "GetPartialObject"
+        MTP_GET_OBJECT_PROP_LIST -> "MTP.GetObjectPropList"
         NIKON_GET_LARGE_THUMB -> "Nikon.GetLargeThumb"
         NIKON_GET_PARTIAL_OBJECT_EX -> "Nikon.GetPartialObjectEx"
         else -> hex16(code)
@@ -156,6 +160,33 @@ public object ObjectFormat {
     public const val UNDEFINED_IMAGE: Int = 0x3800
     public const val EXIF_JPEG: Int = 0x3801
     public const val TIFF: Int = 0x380D
+}
+
+/** MTP object property codes used with GetObjectPropList. */
+public object ObjectPropCode {
+    public const val STORAGE_ID: Int = 0xDC01
+    public const val OBJECT_FORMAT: Int = 0xDC02
+    public const val OBJECT_SIZE: Int = 0xDC04
+    public const val OBJECT_FILE_NAME: Int = 0xDC07
+    public const val DATE_CREATED: Int = 0xDC08
+    public const val DATE_MODIFIED: Int = 0xDC09
+    public const val PARENT_OBJECT: Int = 0xDC0B
+}
+
+/** PTP data type codes. */
+public object DataType {
+    public const val INT8: Int = 0x0001
+    public const val UINT8: Int = 0x0002
+    public const val INT16: Int = 0x0003
+    public const val UINT16: Int = 0x0004
+    public const val INT32: Int = 0x0005
+    public const val UINT32: Int = 0x0006
+    public const val INT64: Int = 0x0007
+    public const val UINT64: Int = 0x0008
+    public const val INT128: Int = 0x0009
+    public const val UINT128: Int = 0x000A
+    public const val ARRAY_FLAG: Int = 0x4000
+    public const val STRING: Int = 0xFFFF
 }
 
 /** Special parameter values used by GetObjectHandles / GetNumObjects. */

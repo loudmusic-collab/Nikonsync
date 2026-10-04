@@ -54,6 +54,28 @@ public class PtpCamera private constructor(
     }
 
     /**
+     * Reads names, sizes, formats, parents and dates for every object on the card in one MTP
+     * GetObjectPropList request. Returns null if the camera doesn't advertise it or rejects the request,
+     * so callers can fall back to one GetObjectInfo per file. Folders are included.
+     */
+    public suspend fun getAllObjectInfosInOneRequest(): Map<Int, ObjectInfo>? {
+        if (!deviceInfo.supports(OperationCode.MTP_GET_OBJECT_PROP_LIST)) return null
+        val sink = ByteArraySink()
+        val result = connection.transaction(
+            OperationCode.MTP_GET_OBJECT_PROP_LIST,
+            // all objects, any format, all properties, no group, any depth
+            listOf(-1, 0, -1, 0, -1),
+            dataIn = sink,
+        )
+        if (!result.isOk) return null
+        return try {
+            ObjectPropList.toObjectInfos(ObjectPropList.parse(sink.toByteArray()))
+        } catch (_: PtpProtocolException) {
+            null
+        }
+    }
+
+    /**
      * Lists every file on every inserted card, newest handle first, emitting each as soon as its
      * ObjectInfo arrives so the UI can fill in progressively. Folders are skipped.
      */
