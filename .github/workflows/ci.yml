@@ -16,9 +16,18 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Test protocol library and build CLI
         run: ./gradlew :ptpip:test :ptpip-cli:installDist --console=plain
+      - name: Test and build Android app
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dropfoto-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
-          path: ptpip/build/reports/tests/
+          path: |
+            ptpip/build/reports/tests/
+            app/build/reports/

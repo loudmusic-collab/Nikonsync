@@ -20,10 +20,10 @@ Allow about 45 minutes. Most of that is the 30-minute stability test, which runs
    - macOS / Linux: `./gradlew :ptpip-cli:installDist`
    - Windows: `gradlew.bat :ptpip-cli:installDist`
 4. Optional: check it works against the built-in simulated camera. In one terminal run
-   `nikonsync-cli fake-server`, in another run `nikonsync-cli --host 127.0.0.1 list`.
+   `dropfoto-cli fake-server`, in another run `dropfoto-cli --host 127.0.0.1 list`.
 
-The tool is at `ptpip-cli/build/install/nikonsync-cli/bin/`. Run it from that folder, or use its
-full path. On Windows it's `nikonsync-cli.bat`. Commands below just say `nikonsync-cli`.
+The tool is at `ptpip-cli/build/install/dropfoto-cli/bin/`. Run it from that folder, or use its
+full path. On Windows it's `dropfoto-cli.bat`. Commands below just say `dropfoto-cli`.
 
 ## 2. Prepare the camera
 
@@ -46,12 +46,12 @@ Run these in order. `--trace` records every packet so I can diagnose anything th
 
 | # | Command | What it checks |
 |---|---|---|
-| 1 | `nikonsync-cli --trace trace-info.log info > info.txt` | Handshake, camera model and firmware, supported features |
-| 2 | `nikonsync-cli --trace trace-list.log list > list.txt` | Listing the whole card. Note how long it takes. |
-| 3 | `nikonsync-cli thumb 0x…` (a handle from `list.txt`) | Thumbnails. Open the saved `_thumb.jpg`. |
-| 4 | `nikonsync-cli --trace trace-get.log get DSC_1234.NEF DSC_1234.JPG --out test-dl` | Downloading a RAW+JPEG pair. Note the MB/s. |
-| 5 | Start `nikonsync-cli get DSC_1235.NEF --out test-dl`, press **Ctrl+C** halfway, then run the same command again | Resuming an interrupted download. It should continue from where it stopped, not restart. |
-| 6 | `nikonsync-cli --trace trace-soak.log soak --minutes 30 > soak.txt` | Stability. Leave everything alone for 30 minutes. |
+| 1 | `dropfoto-cli --trace trace-info.log info > info.txt` | Handshake, camera model and firmware, supported features |
+| 2 | `dropfoto-cli --trace trace-list.log list > list.txt` | Listing the whole card. Note how long it takes. |
+| 3 | `dropfoto-cli thumb 0x…` (a handle from `list.txt`) | Thumbnails. Open the saved `_thumb.jpg`. |
+| 4 | `dropfoto-cli --trace trace-get.log get DSC_1234.NEF DSC_1234.JPG --out test-dl` | Downloading a RAW+JPEG pair. Note the MB/s. |
+| 5 | Start `dropfoto-cli get DSC_1235.NEF --out test-dl`, press **Ctrl+C** halfway, then run the same command again | Resuming an interrupted download. It should continue from where it stopped, not restart. |
+| 6 | `dropfoto-cli --trace trace-soak.log soak --minutes 30 > soak.txt` | Stability. Leave everything alone for 30 minutes. |
 
 Use real file names from `list.txt` in steps 4 and 5.
 

@@ -23,8 +23,8 @@ dependencies {
 }
 
 application {
-    applicationName = "nikonsync-cli"
-    mainClass.set("com.loudmusic.nikonsync.cli.MainKt")
+    applicationName = "dropfoto-cli"
+    mainClass.set("com.loudmusic.dropfoto.cli.MainKt")
 }
 
 tasks.named<JavaExec>("run") {

@@ -1,4 +1,4 @@
-# NikonSync: Plan
+# DropFoto: Plan
 
 An Android app that connects to a **Nikon D5500** over the camera's built-in Wi-Fi,
 shows thumbnails of what's on the memory card, and downloads selected photos to the phone.
@@ -76,7 +76,7 @@ each known cause:
   which the Play Store requires for new apps. The primary test device runs Android 15 (API 35).
 - **Room** for the cached file index and download state
 - **Coil** for images, with a custom `Fetcher` that loads thumbnails through PTP
-- **MediaStore** for saving to `Pictures/NikonSync/` (scoped storage, no storage permission needed)
+- **MediaStore** for saving to `Pictures/DropFoto/` (scoped storage, no storage permission needed)
 - **Hilt** for dependency injection. That's optional; manual DI is fine at this size.
 - Permissions, kept minimal so a Play Store review is easy:
   - `NEARBY_WIFI_DEVICES` with `neverForLocation` (Android 13+); `ACCESS_FINE_LOCATION` limited
@@ -172,7 +172,7 @@ The UI observes this as a `StateFlow` and shows the exact stage, so a failure re
 - Settings:
   - **What to download:** RAW+JPEG (default), JPEG only, or RAW only. You can also override
     this per selection, for example "just the JPEGs for now".
-  - **Where to save:** `Pictures/NikonSync/` by default. JPEG and NEF go in the same folder
+  - **Where to save:** `Pictures/DropFoto/` by default. JPEG and NEF go in the same folder
     so Lightroom and Snapseed pair them.
 - NEF files are saved with MIME type `image/x-nikon-nef`. Phase 4 confirms that MediaStore on
   One UI accepts them in the Images collection; if not, they go to the Downloads collection.
@@ -203,6 +203,10 @@ chunked downloads, resuming after a mid-transfer drop, single-client refusal, ev
   mid-transfer disconnect and resume
 
 ### Phase 2: Android connection layer
+**Status:** built. `CameraWifiProvider` / `CurrentWifiProvider` (network request + socket factory),
+`CameraController` (state machine, keep-alive, reconnect; 7 tests against the simulated camera),
+`CameraService` (connectedDevice foreground service with Wi-Fi and wake locks) and a test screen.
+The exit criteria still need a run on the S21 Ultra.
 - `WifiConnector` (specifier request, network callbacks, socket factory, WifiLock)
 - `CameraService` foreground service + state machine + keep-alive + reconnect
 - A minimal debug screen that shows the state and the `GetDeviceInfo` output
@@ -275,7 +279,7 @@ CI: GitHub Actions running `./gradlew ptpip:test app:lint app:assembleDebug` on 
 
 1. ~~Phone and Android version~~ → Samsung S21 Ultra, Android 15
 2. ~~RAW, JPEG or both~~ → RAW+JPEG; download both by default, JPEGs first
-3. Download folder: `Pictures/NikonSync/` unless you'd prefer another location
+3. Download folder: `Pictures/DropFoto/` unless you'd prefer another location
 4. ~~Personal or Play Store~~ → personal first, Play Store maybe later (see §10)
 
 ---
@@ -294,9 +298,9 @@ v1 is a sideloaded APK, but these choices keep publishing later cheap:
 - **Data safety form:** the app collects and sends no data. Traffic only goes between the
   phone and the camera. No analytics SDKs, which keeps the form trivial.
 - **Privacy policy:** a one-page "we collect nothing" statement hosted on GitHub Pages
-- **Name and branding:** "Nikon" is a trademark. The published listing needs a neutral name,
-  for example "Sync for D-series cameras", plus a line saying it isn't affiliated with Nikon.
-  The internal code name can stay NikonSync.
+- **Name and branding:** the app is called **DropFoto** (package `com.loudmusic.dropfoto`), which
+  keeps "Nikon", a trademark, out of the name. The listing can still say "works with Nikon D5500"
+  plus a line saying it isn't affiliated with Nikon.
 - **Wider camera support:** because the protocol is standard PTP/IP, other Nikon bodies with
   built-in Wi-Fi (D5300, D7200, D750, …) will probably work too. That's worth listing as
   "tested on" or "may work on" if the app ships.
