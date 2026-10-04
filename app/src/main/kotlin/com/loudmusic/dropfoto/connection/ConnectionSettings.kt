@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.util.Base64
 import androidx.core.content.edit
+import com.loudmusic.dropfoto.download.RawFormat
 import com.loudmusic.dropfoto.gallery.DownloadChoice
 import com.loudmusic.dropfoto.ptpip.PtpIpConfig
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,6 +94,11 @@ class SettingsStore(context: Context) : KnownCameraStore {
         get() = runCatching { DownloadChoice.valueOf(prefs.getString(KEY_DOWNLOAD_CHOICE, null)!!) }.getOrDefault(DownloadChoice.JPEG)
         set(value) = prefs.edit { putString(KEY_DOWNLOAD_CHOICE, value.name) }
 
+    /** How RAW downloads are saved: DNG by default (Snapseed needs DNG). */
+    var rawFormat: RawFormat
+        get() = runCatching { RawFormat.valueOf(prefs.getString(KEY_RAW_FORMAT, null)!!) }.getOrDefault(RawFormat.DNG)
+        set(value) = prefs.edit { putString(KEY_RAW_FORMAT, value.name) }
+
     /** Serial of the last camera connected, so its card can be shown while offline. */
     var lastCameraSerial: String?
         get() = prefs.getString(KEY_LAST_SERIAL, null)
@@ -110,6 +116,7 @@ class SettingsStore(context: Context) : KnownCameraStore {
         const val KEY_KNOWN_SSID = "known_ssid"
         const val KEY_DOWNLOAD_CHOICE = "download_choice"
         const val KEY_LAST_SERIAL = "last_serial"
+        const val KEY_RAW_FORMAT = "raw_format"
         const val KEY_KNOWN_BSSID = "known_bssid"
     }
 }

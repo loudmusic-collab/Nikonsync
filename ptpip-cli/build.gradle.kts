@@ -18,6 +18,7 @@ kotlin {
 
 dependencies {
     implementation(project(":ptpip"))
+    implementation(project(":dng"))
     implementation(testFixtures(project(":ptpip")))
     implementation(libs.kotlinx.coroutines.core)
 }

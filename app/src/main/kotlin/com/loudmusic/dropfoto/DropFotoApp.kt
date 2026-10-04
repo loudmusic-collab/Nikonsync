@@ -27,7 +27,7 @@ class DropFotoApp : Application() {
     val settings by lazy { SettingsStore(this) }
     val controller by lazy { CameraController(appScope) }
     val index by lazy { CardIndex(ObjectCache(File(filesDir, "cards")), controller::log) }
-    val photoStore by lazy { MediaStorePhotoStore(this, controller::log) }
+    val photoStore by lazy { MediaStorePhotoStore(this, controller::log) { settings.rawFormat } }
     val downloads by lazy { DownloadQueue(appScope, photoStore, controller.camera, index::find, controller::log) }
     val thumbnails by lazy { ThumbnailLoader(this, controller.camera, index.cameraSerial) }
 

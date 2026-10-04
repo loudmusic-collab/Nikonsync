@@ -62,8 +62,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.loudmusic.dropfoto.connection.ConnectionState
 import com.loudmusic.dropfoto.download.DownloadProgress
+import com.loudmusic.dropfoto.download.RawFormat
 import com.loudmusic.dropfoto.gallery.CardFile
 import com.loudmusic.dropfoto.gallery.DownloadChoice
+import com.loudmusic.dropfoto.gallery.FileKind
 import com.loudmusic.dropfoto.gallery.IndexStatus
 import com.loudmusic.dropfoto.gallery.Shot
 import com.loudmusic.dropfoto.gallery.ThumbnailLoader
@@ -85,6 +87,7 @@ fun GalleryScreen(vm: MainViewModel, onOpenShot: (Shot) -> Unit, onOpenConnectio
     val downloads by vm.downloads.collectAsStateWithLifecycle()
     val panelDismissed by vm.downloadPanelDismissed.collectAsStateWithLifecycle()
     val choice by vm.downloadChoice.collectAsStateWithLifecycle()
+    val rawFormat by vm.rawFormat.collectAsStateWithLifecycle()
     val connect = rememberConnectAction()
     val selecting = selection.isNotEmpty()
 
@@ -121,7 +124,7 @@ fun GalleryScreen(vm: MainViewModel, onOpenShot: (Shot) -> Unit, onOpenConnectio
         bottomBar = {
             Column {
                 if ((downloads.running || downloads.total > 0) && !panelDismissed) {
-                    DownloadPanel(downloads, onCancel = vm::cancelDownloads, onDismiss = vm::dismissDownloadPanel)
+                    DownloadPanel(downloads, rawFormat, onCancel = vm::cancelDownloads, onDismiss = vm::dismissDownloadPanel)
                 }
                 if (selecting) {
                     SelectionBar(vm.selectedShots(), saved, choice, onChoice = vm::setDownloadChoice, onDownload = vm::downloadSelection)
@@ -371,7 +374,7 @@ private fun SelectionBar(
 }
 
 @Composable
-private fun DownloadPanel(p: DownloadProgress, onCancel: () -> Unit, onDismiss: () -> Unit) {
+private fun DownloadPanel(p: DownloadProgress, rawFormat: RawFormat, onCancel: () -> Unit, onDismiss: () -> Unit) {
     Surface(tonalElevation = 3.dp) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (p.running) {
@@ -390,6 +393,7 @@ private fun DownloadPanel(p: DownloadProgress, onCancel: () -> Unit, onDismiss: 
                 Text(
                     when {
                         p.waitingForCamera -> "Waiting for the camera to reconnect…"
+                        p.saving -> if (p.current?.kind == FileKind.RAW && rawFormat != RawFormat.NEF) "Converting to DNG…" else "Saving…"
                         p.bytesPerSecond > 0 -> {
                             val left = (p.batchBytesTotal - p.batchBytesDone).coerceAtLeast(0)
                             "%.1f MB/s · about %s left".format(p.bytesPerSecond / 1e6, duration(left / p.bytesPerSecond))

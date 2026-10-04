@@ -46,6 +46,8 @@ Commands:
   get-all [--out dir] [--jpeg-only]
                               Download everything not already in dir (JPEGs first)
   soak [--minutes n]          Stay connected, check the link every 10 s and report drops
+  nef2dng <file.NEF>... [--out dir]
+                              Convert NEF files to DNG (no camera needed)
   fake-server [--port n] [--bind addr] [--dir folder] [--drop-after-mb n]
                               Run a simulated camera (serves files from folder if given;
                               optionally cuts the connection once after n MB, to test resume)
@@ -109,6 +111,7 @@ fun main(argv: Array<String>) {
                 "get-all" -> getAll(args, logger)
                 "soak" -> soak(args, logger)
                 "fake-server" -> fakeServer(args)
+                "nef2dng" -> nefToDng(args, rest)
                 else -> fail("unknown command '$command'. Run with --help.")
             }
             0
@@ -353,6 +356,18 @@ private suspend fun soak(args: Args, logger: PacketLogger?) {
         }
     }
     println("Summary: $checks checks, $drops drops, $probeFailures unanswered probes")
+}
+
+private fun nefToDng(args: Args, files: List<String>) {
+    if (files.isEmpty()) fail("nef2dng needs at least one NEF file")
+    for (path in files) {
+        val nef = File(path)
+        val outDir = args.opt("--out")?.let(::File)?.apply { mkdirs() } ?: nef.absoluteFile.parentFile
+        val dng = File(outDir, nef.nameWithoutExtension + ".DNG")
+        val started = System.nanoTime()
+        com.loudmusic.dropfoto.dng.NefToDng.convert(nef.readBytes(), dng)
+        println("%s -> %s (%s) in %.1f s".format(nef.name, dng.path, formatSize(dng.length()), (System.nanoTime() - started) / 1e9))
+    }
 }
 
 private suspend fun fakeServer(args: Args) {

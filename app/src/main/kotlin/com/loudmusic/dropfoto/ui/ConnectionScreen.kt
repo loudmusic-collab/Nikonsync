@@ -60,6 +60,7 @@ import com.loudmusic.dropfoto.connection.ConnectionMode
 import com.loudmusic.dropfoto.connection.ConnectionSettings
 import com.loudmusic.dropfoto.connection.ConnectionState
 import com.loudmusic.dropfoto.connection.KnownCamera
+import com.loudmusic.dropfoto.download.RawFormat
 import com.loudmusic.dropfoto.connection.LogLine
 import java.time.format.DateTimeFormatter
 
@@ -75,6 +76,7 @@ fun ConnectionScreen(vm: MainViewModel, onBack: () -> Unit) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val log by vm.log.collectAsStateWithLifecycle()
     val paired by vm.pairedCamera.collectAsStateWithLifecycle()
+    val rawFormat by vm.rawFormat.collectAsStateWithLifecycle()
 
     val connect = rememberConnectAction()
 
@@ -132,6 +134,7 @@ fun ConnectionScreen(vm: MainViewModel, onBack: () -> Unit) {
                 }
             }
             item { StatusCard(state) }
+            item { DownloadsCard(rawFormat, onRawFormat = vm::setRawFormat) }
             item { Text("Log", style = MaterialTheme.typography.titleMedium) }
             items(log.asReversed()) { LogRow(it) }
         }
@@ -204,6 +207,32 @@ private fun SettingsCard(settings: ConnectionSettings, enabled: Boolean, onChang
                     modifier = Modifier.weight(1f),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun DownloadsCard(format: RawFormat, onRawFormat: (RawFormat) -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Save RAW files as", style = MaterialTheme.typography.titleMedium)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                RawFormat.entries.forEachIndexed { i, f ->
+                    SegmentedButton(
+                        selected = f == format,
+                        onClick = { onRawFormat(f) },
+                        shape = SegmentedButtonDefaults.itemShape(i, RawFormat.entries.size),
+                    ) { Text(f.label) }
+                }
+            }
+            Text(
+                when (format) {
+                    RawFormat.DNG -> "Converted on the phone to DNG, which Snapseed and most editors open. Same RAW data as the NEF."
+                    RawFormat.NEF -> "Kept as the camera's original NEF. Snapseed can't open NEF files."
+                    RawFormat.BOTH -> "Saves the original NEF and a DNG copy. Uses about twice the space."
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }

@@ -11,8 +11,8 @@ android {
         applicationId = "com.loudmusic.dropfoto"
         minSdk = 29
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.2.2"
+        versionCode = 8
+        versionName = "0.3.0"
     }
 
     buildTypes {
@@ -39,6 +39,7 @@ android {
 
 dependencies {
     implementation(project(":ptpip"))
+    implementation(project(":dng"))
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

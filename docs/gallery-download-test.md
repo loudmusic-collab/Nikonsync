@@ -48,3 +48,11 @@ while they download.
 - The **MB/s** shown while downloading JPEGs and RAWs. This is our first real speed figure.
 - How long the first card read takes, and the second.
 - Anything that looks wrong. Screenshots help.
+
+## DNG (v0.3.0)
+
+1. Open **Connection** (gear icon). Under **Save RAW files as**, pick **DNG** (the default), **NEF** or **NEF + DNG**.
+2. Download a RAW (or RAW + JPEG). After the transfer the panel shows *Converting to DNG…*, and the log
+   says *Converted DSC_xxxx.NEF to DNG (… MB) in … s*. Please note that time.
+3. Open the DNG in **Snapseed** (Open → Pictures/DropFoto). Check that it opens as a RAW (the *RAW Develop*
+   tool appears) and that the colours look like the camera's JPEG.

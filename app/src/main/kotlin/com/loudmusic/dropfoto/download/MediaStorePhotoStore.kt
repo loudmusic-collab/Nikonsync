@@ -5,6 +5,8 @@ import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
 import com.loudmusic.dropfoto.gallery.CardFile
+import com.loudmusic.dropfoto.dng.NefToDng
+import com.loudmusic.dropfoto.dng.UnsupportedCameraException
 import com.loudmusic.dropfoto.gallery.FileKind
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,9 +25,13 @@ import java.time.ZoneId
  * against what's still in the library, so deleting a photo on the phone makes it downloadable
  * again, and a renamed copy ("DSC_0001 (1).JPG") still counts as saved.
  */
+/** How downloaded RAW files are saved. DNG opens in Snapseed and most editors; NEF is the camera's original. */
+enum class RawFormat(val label: String) { DNG("DNG"), NEF("NEF"), BOTH("NEF + DNG") }
+
 class MediaStorePhotoStore(
     private val context: Context,
     private val log: (String) -> Unit = {},
+    private val rawFormat: () -> RawFormat = { RawFormat.DNG },
 ) : PhotoStore {
     private val records = File(context.filesDir, "saved.tsv")
     private val partialDir = File(context.filesDir, "partial")
@@ -70,36 +76,71 @@ class MediaStorePhotoStore(
     override fun partialFile(file: CardFile): File = File(partialDir, "${file.filename}_${file.size}.part")
 
     override fun publish(file: CardFile, completed: File) {
-        val resolver = context.contentResolver
-        val (collection, folder, mime) = target(file)
-        val uri = try {
-            insert(collection, folder, mime, file)
-        } catch (e: IllegalArgumentException) {
-            if (file.kind != FileKind.RAW) throw IOException(e.message, e)
-            // Some phones refuse RAW types in the Images collection: fall back to Downloads.
-            log("Photos library refused ${file.filename}; saving it in Download/DropFoto instead")
-            insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, DOWNLOADS_DIR, mime, file)
+        var primary: Uri? = null
+        if (file.kind == FileKind.RAW && rawFormat() != RawFormat.NEF) {
+            primary = publishDng(file, completed)
         }
-        try {
-            resolver.openOutputStream(uri)?.use { out ->
-                completed.inputStream().use { it.copyTo(out, 256 * 1024) }
-            } ?: throw IOException("Couldn't open ${file.filename} for writing")
-            resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
-        } catch (e: Exception) {
-            resolver.delete(uri, null, null)
-            throw if (e is IOException) e else IOException(e.message, e)
+        if (primary == null || rawFormat() == RawFormat.BOTH) {
+            val (collection, folder, mime) = target(file)
+            val uri = save(file.filename, mime, collection, folder, file, completed)
+            if (primary == null) primary = uri
         }
         completed.delete()
         synchronized(known) {
-            known[file.key] = uri.toString()
+            known[file.key] = primary.toString()
             persist()
         }
         _saved.update { it + file.key }
     }
 
-    private fun insert(collection: Uri, folder: String, mime: String, file: CardFile): Uri {
+    /** Converts a downloaded NEF to DNG and saves it. Returns null (keeping the NEF) if conversion isn't possible. */
+    private fun publishDng(file: CardFile, nef: File): Uri? {
+        val dng = File(context.cacheDir, file.filename.substringBeforeLast('.') + ".DNG")
+        return try {
+            val started = System.nanoTime()
+            NefToDng.convert(nef.readBytes(), dng)
+            log("Converted ${file.filename} to DNG (%.1f MB) in %.1f s".format(dng.length() / 1e6, (System.nanoTime() - started) / 1e9))
+            save(dng.name, "image/x-adobe-dng", MediaStore.Images.Media.EXTERNAL_CONTENT_URI, PICTURES_DIR, file, dng)
+        } catch (e: UnsupportedCameraException) {
+            log("${e.message}; saving the NEF instead")
+            null
+        } catch (_: OutOfMemoryError) {
+            log("Not enough memory to convert ${file.filename} to DNG; saving the NEF instead")
+            null
+        } catch (e: Exception) {
+            if (e is IOException) throw e
+            log("Couldn't convert ${file.filename} to DNG (${e.message}); saving the NEF instead")
+            null
+        } finally {
+            dng.delete()
+        }
+    }
+
+    /** Copies [source] into MediaStore as [displayName]. RAW types refused by Images go to Download/DropFoto. */
+    private fun save(displayName: String, mime: String, collection: Uri, folder: String, file: CardFile, source: File): Uri {
+        val resolver = context.contentResolver
+        val uri = try {
+            insert(collection, folder, mime, displayName, file)
+        } catch (e: IllegalArgumentException) {
+            if (file.kind != FileKind.RAW) throw IOException(e.message, e)
+            log("Photos library refused $displayName; saving it in Download/DropFoto instead")
+            insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, DOWNLOADS_DIR, mime, displayName, file)
+        }
+        try {
+            resolver.openOutputStream(uri)?.use { out ->
+                source.inputStream().use { it.copyTo(out, 256 * 1024) }
+            } ?: throw IOException("Couldn't open $displayName for writing")
+            resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        } catch (e: Exception) {
+            resolver.delete(uri, null, null)
+            throw if (e is IOException) e else IOException(e.message, e)
+        }
+        return uri
+    }
+
+    private fun insert(collection: Uri, folder: String, mime: String, displayName: String, file: CardFile): Uri {
         val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, file.filename)
+            put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
             put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
             put(MediaStore.MediaColumns.IS_PENDING, 1)
@@ -108,7 +149,7 @@ class MediaStorePhotoStore(
             }
         }
         return context.contentResolver.insert(collection, values)
-            ?: throw IOException("The photo library didn't accept ${file.filename}")
+            ?: throw IOException("The photo library didn't accept $displayName")
     }
 
     private fun target(file: CardFile): Triple<Uri, String, String> = when (file.kind) {

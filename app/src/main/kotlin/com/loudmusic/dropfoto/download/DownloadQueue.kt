@@ -49,6 +49,8 @@ data class DownloadProgress(
     val lastError: String? = null,
     /** Where the time went for the last finished file, e.g. for diagnosing slow transfers. */
     val lastTiming: String? = null,
+    /** True while the current file is being saved (and converted to DNG if needed). */
+    val saving: Boolean = false,
 ) {
     val remaining: Int get() = total - done - failed
 }
@@ -225,7 +227,12 @@ class DownloadQueue(
                 log("Camera accepts download pieces up to ${reportedCap / 1024} KB")
             }
             val timing = describeTiming(file.size - resumeFrom, (System.nanoTime() - started) / 1_000_000, chunks)
-            store.publish(file, part)
+            _progress.update { it.copy(saving = true) }
+            try {
+                store.publish(file, part)
+            } finally {
+                _progress.update { it.copy(saving = false) }
+            }
             log("Saved ${file.filename}: $timing")
             _progress.update { it.copy(lastTiming = "${file.filename}: $timing") }
         }

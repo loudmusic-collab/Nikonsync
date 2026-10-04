@@ -7,6 +7,7 @@ import com.loudmusic.dropfoto.DropFotoApp
 import com.loudmusic.dropfoto.connection.CameraPairing
 import com.loudmusic.dropfoto.connection.ConnectionSettings
 import com.loudmusic.dropfoto.connection.KnownCamera
+import com.loudmusic.dropfoto.download.RawFormat
 import com.loudmusic.dropfoto.gallery.DownloadChoice
 import com.loudmusic.dropfoto.gallery.Shot
 import com.loudmusic.dropfoto.gallery.groupShots
@@ -88,6 +89,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun selectedShots(): List<Shot> {
         val keys = _selection.value
         return shots.value.filter { it.id in keys }
+    }
+
+    private val _rawFormat = MutableStateFlow(app.settings.rawFormat)
+    val rawFormat: StateFlow<RawFormat> = _rawFormat.asStateFlow()
+
+    fun setRawFormat(format: RawFormat) {
+        _rawFormat.value = format
+        app.settings.rawFormat = format
     }
 
     fun setDownloadChoice(choice: DownloadChoice) {

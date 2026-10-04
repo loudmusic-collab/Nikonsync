@@ -285,6 +285,24 @@ radio (802.11b/g) or the phone's side of the link, for example power saving. To 
 Expect ~30 s per JPEG and ~2.5 min per NEF at this rate. Pieces stayed at 1 MB because start-up was small, so
 no size refusals happened. Card read: 671 files in 68 s on a fresh cache.
 
+### DNG conversion (v0.3.0)
+Snapseed only opens DNG, so RAW downloads are converted on the phone (setting: **DNG** (default),
+**NEF**, or **NEF + DNG**). The pure-Kotlin `:dng` module:
+- **NefFile:** reads the NEF's TIFF structure and Nikon maker note (black level 0x3D, white balance 0x0C,
+  decompression data 0x96).
+- **NikonDecoder:** Nikon's lossless and lossy (12/14-bit) Huffman + linearization-curve decoding, the
+  algorithm used by dcraw/LibRaw.
+- **NefToDng:** writes a DNG 1.4 with tiled lossless-JPEG raw data, black/white levels, as-shot neutral,
+  Adobe's D65 colour matrix for the D5500, the 6000×4000 default crop, orientation and the main EXIF fields.
+
+Checked against the real sample (`samples` branch, DSC_8878.NEF, 14-bit lossy type 2):
+- the decoded raw matches LibRaw 0.22 bit for bit (SHA-256 in `SampleNefTest`);
+- LibRaw reads the DNG back to identical raw data and identical renders;
+- every DNG tile decodes back exactly with an independent decoder in the tests.
+
+The DNG is 17.9 MB versus the 23.2 MB NEF. Conversion takes about 1.6 s on a laptop core; the phone will be slower.
+Only the D5500 has a colour profile so far; other cameras fall back to saving the NEF.
+
 ### Phase 5: Polish and hardening
 - Error messages in plain language, onboarding, settings, dark theme, and handling for
   "camera battery low" and "card removed"

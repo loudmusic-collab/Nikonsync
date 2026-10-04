@@ -25,3 +25,4 @@ rootProject.name = "DropFoto"
 include(":ptpip")
 include(":ptpip-cli")
 include(":app")
+include(":dng")

@@ -14,8 +14,16 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
-      - name: Test protocol library and build CLI
-        run: ./gradlew :ptpip:test :ptpip-cli:installDist --console=plain
+      - name: Fetch the sample NEF from the samples branch (optional)
+        run: |
+          if git fetch --depth=1 origin samples; then
+            git show FETCH_HEAD:DSC_8878.NEF > "$RUNNER_TEMP/sample.NEF"
+            echo "DROPFOTO_SAMPLE_NEF=$RUNNER_TEMP/sample.NEF" >> "$GITHUB_ENV"
+          else
+            echo "No samples branch; the real-file DNG test will be skipped"
+          fi
+      - name: Test protocol library, DNG converter and build CLI
+        run: ./gradlew :ptpip:test :dng:test :ptpip-cli:installDist --console=plain
       - name: Test and build Android app
         run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain
       - name: Upload debug APK
@@ -30,4 +38,5 @@ jobs:
           name: test-reports
           path: |
             ptpip/build/reports/tests/
+            dng/build/reports/tests/
             app/build/reports/
