@@ -271,6 +271,20 @@ likely the D5500 refuses partial reads above some size, and v0.2.1 had started g
 the 1 MB that worked in v0.2.0. v0.2.2 halves the piece on a refusal, remembers the largest size the
 camera accepts for the connection (logged), and waits and retries when the camera is briefly busy.
 
+**Measured on v0.2.2 (S21 Ultra + D5500, gallery idle):**
+
+| File | Size | Total | Data flowing | Camera start-up | Queued | Requests |
+|---|---|---|---|---|---|---|
+| DSC_8945.JPG | 6.2 MB | 32.5 s (0.19 MB/s) | 0.19 MB/s | 0.3 s | 0.0 s | 6 |
+| DSC_8945.NEF | 31.1 MB | 161.0 s (0.19 MB/s) | 0.20 MB/s | 2.8 s | 0.0 s | 30 |
+
+The app's own overhead is now negligible: no queueing, and start-up is about 2% of the time. Bytes arrive at
+~0.2 MB/s while the camera is sending, so the limit is the Wi-Fi link itself: either the D5500's
+radio (802.11b/g) or the phone's side of the link, for example power saving. To tell them apart, run
+`dropfoto-cli get DSC_8945.NEF` on a laptop on the camera's network: the same ~0.2 MB/s means it's the camera.
+Expect ~30 s per JPEG and ~2.5 min per NEF at this rate. Pieces stayed at 1 MB because start-up was small, so
+no size refusals happened. Card read: 671 files in 68 s on a fresh cache.
+
 ### Phase 5: Polish and hardening
 - Error messages in plain language, onboarding, settings, dark theme, and handling for
   "camera battery low" and "card removed"
