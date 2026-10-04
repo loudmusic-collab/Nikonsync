@@ -409,6 +409,7 @@ private fun DownloadPanel(p: DownloadProgress, onCancel: () -> Unit, onDismiss: 
                     TextButton(onClick = onDismiss) { Text("OK") }
                 }
                 p.lastError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                p.lastTiming?.let { Text("Last file: $it", style = MaterialTheme.typography.bodySmall) }
             }
         }
     }

@@ -7,6 +7,18 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.Closeable
 import java.io.OutputStream
 
+/**
+ * Timing of one download request, to see where time goes:
+ * [queuedMillis] waiting behind other requests from this app, [firstByteMillis] the camera taking
+ * to start sending, [transferMillis] the data actually flowing.
+ */
+public data class ChunkStats(
+    val bytes: Long,
+    val queuedMillis: Long,
+    val firstByteMillis: Long,
+    val transferMillis: Long,
+)
+
 /** A file (not a folder) on the camera's card. */
 public data class CameraFile(val handle: Int, val info: ObjectInfo) {
     val filename: String get() = info.filename
@@ -113,7 +125,11 @@ public class PtpCamera private constructor(
      * Reads up to [maxBytes] of an object starting at [offset] into [sink].
      * Returns the number of bytes actually received.
      */
-    public suspend fun getPartialObject(handle: Int, offset: Long, maxBytes: Int, sink: DataSink): Long {
+    public suspend fun getPartialObject(handle: Int, offset: Long, maxBytes: Int, sink: DataSink): Long =
+        getPartialObjectTimed(handle, offset, maxBytes, sink).bytes
+
+    private suspend fun getPartialObjectTimed(handle: Int, offset: Long, maxBytes: Int, sink: DataSink): ChunkStats {
+        val started = System.nanoTime()
         val counting = CountingSink(sink)
         val result = if (offset <= 0xFFFFFFFFL) {
             connection.transaction(
@@ -131,13 +147,21 @@ public class PtpCamera private constructor(
             throw PtpException("Offset $offset is beyond 4 GB and the camera has no 64-bit partial read")
         }
         result.requireOk(OperationCode.GET_PARTIAL_OBJECT)
-        return counting.count
+        val firstData = if (result.firstDataNanos > 0) result.firstDataNanos else result.doneNanos
+        return ChunkStats(
+            bytes = counting.count,
+            queuedMillis = (result.sentNanos - started).coerceAtLeast(0) / 1_000_000,
+            firstByteMillis = (firstData - result.sentNanos).coerceAtLeast(0) / 1_000_000,
+            transferMillis = (result.doneNanos - firstData).coerceAtLeast(0) / 1_000_000,
+        )
     }
 
     /**
      * Downloads an object into [out], starting at [startOffset] (the number of bytes already saved
-     * from an earlier, interrupted attempt). Uses GetPartialObject in [chunkSize] pieces when
-     * supported, so other requests such as thumbnails can run between chunks.
+     * from an earlier, interrupted attempt). Uses GetPartialObject in pieces of at least [chunkSize]
+     * when supported, so other requests such as thumbnails can run between chunks. With [adaptive],
+     * pieces double (up to [MAX_CHUNK_SIZE]) while the camera's start-up time per request is a large
+     * share of each request, since that time is wasted. [onChunk] reports each request's timing.
      *
      * Returns the object's total size. Throws [PtpConnectionLostException] if the connection
      * drops. Everything written so far stays valid, so reconnect and call again with the new offset.
@@ -148,19 +172,28 @@ public class PtpCamera private constructor(
         out: OutputStream,
         startOffset: Long = 0,
         chunkSize: Int = DEFAULT_CHUNK_SIZE,
+        adaptive: Boolean = true,
+        onChunk: (ChunkStats) -> Unit = {},
         onProgress: (bytesDone: Long, total: Long) -> Unit = { _, _ -> },
     ): Long {
         require(startOffset in 0..size) { "startOffset $startOffset outside 0..$size" }
         val sink = OutputStreamSink(out)
         if (deviceInfo.supports(OperationCode.GET_PARTIAL_OBJECT)) {
             var offset = startOffset
+            var piece = chunkSize
             onProgress(offset, size)
             while (offset < size) {
-                val want = minOf(chunkSize.toLong(), size - offset).toInt()
-                val got = getPartialObject(handle, offset, want, sink)
+                val want = minOf(piece.toLong(), size - offset).toInt()
+                val stats = getPartialObjectTimed(handle, offset, want, sink)
+                val got = stats.bytes
                 if (got <= 0) throw PtpException("Camera returned no data at offset $offset of $size")
                 offset += got
+                onChunk(stats)
                 onProgress(offset, size)
+                val busy = stats.firstByteMillis + stats.transferMillis
+                if (adaptive && busy > 0 && stats.firstByteMillis * 4 > busy) {
+                    piece = minOf(piece * 2, MAX_CHUNK_SIZE)
+                }
             }
             out.flush()
             return size
@@ -223,6 +256,7 @@ public class PtpCamera private constructor(
 
     public companion object {
         public const val DEFAULT_CHUNK_SIZE: Int = 1 shl 20
+        public const val MAX_CHUNK_SIZE: Int = 8 shl 20
         public const val DEFAULT_SESSION_ID: Int = 1
 
         /**

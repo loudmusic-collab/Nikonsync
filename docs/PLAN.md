@@ -261,6 +261,11 @@ and notification. The queue lives in memory: if Android kills the app, re-select
   forced disconnect, and no file is corrupt (verified by size and by opening them in Samsung Gallery
   and Lightroom).
 
+**Speed (first real test, v0.2.0):** about 0.3 MB/s for a JPEG and a NEF. v0.2.1 limits thumbnail
+fetches to one at a time (each was queueing ahead of download chunks), grows the download piece size
+when the camera's per-request start-up time dominates (up to 8 MB), and logs a per-file breakdown
+(data flowing / camera start-up / queued) to find the real bottleneck.
+
 ### Phase 5: Polish and hardening
 - Error messages in plain language, onboarding, settings, dark theme, and handling for
   "camera battery low" and "card removed"

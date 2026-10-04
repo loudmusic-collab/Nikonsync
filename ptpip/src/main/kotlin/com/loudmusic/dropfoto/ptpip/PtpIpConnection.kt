@@ -54,8 +54,17 @@ public data class PtpEvent(val code: Int, val params: List<Int>) {
     override fun toString(): String = "${EventCode.name(code)}(${params.joinToString { hex32(it) }})"
 }
 
-/** Result of one PTP transaction. */
-public data class OperationResult(val responseCode: Int, val params: List<Int>) {
+/**
+ * Result of one PTP transaction, with timings (System.nanoTime) for diagnosing speed:
+ * when the request went out, when the first data arrived (0 if none), and when the response came.
+ */
+public data class OperationResult(
+    val responseCode: Int,
+    val params: List<Int>,
+    val sentNanos: Long = 0,
+    val firstDataNanos: Long = 0,
+    val doneNanos: Long = 0,
+) {
     val isOk: Boolean get() = responseCode == ResponseCode.OK
 }
 
@@ -199,6 +208,8 @@ public class PtpIpConnection private constructor(
             command.write(PtpIpPacket.StartData(tid, dataOut.size.toLong()))
             command.write(PtpIpPacket.EndData(tid, dataOut))
         }
+        val sent = System.nanoTime()
+        var firstData = 0L
         while (true) {
             val header = command.readHeader()
             when (header.type) {
@@ -208,12 +219,13 @@ public class PtpIpConnection private constructor(
                     sink.onStart(start.totalLength)
                 }
                 PacketType.DATA, PacketType.END_DATA -> {
+                    if (firstData == 0L) firstData = System.nanoTime()
                     checkTid(code, tid, command.streamDataBody(header, sink))
                 }
                 PacketType.OPERATION_RESPONSE -> {
                     val response = command.readBody(header) as PtpIpPacket.OperationResponse
                     checkTid(code, tid, response.transactionId)
-                    return OperationResult(response.code, response.params)
+                    return OperationResult(response.code, response.params, sent, firstData, System.nanoTime())
                 }
                 PacketType.PROBE_REQUEST -> {
                     command.readBody(header)

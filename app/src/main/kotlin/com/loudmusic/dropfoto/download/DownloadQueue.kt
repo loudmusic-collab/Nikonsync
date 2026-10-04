@@ -4,6 +4,7 @@ import com.loudmusic.dropfoto.gallery.CardFile
 import com.loudmusic.dropfoto.gallery.DownloadChoice
 import com.loudmusic.dropfoto.gallery.FileKind
 import com.loudmusic.dropfoto.gallery.Shot
+import com.loudmusic.dropfoto.ptpip.ChunkStats
 import com.loudmusic.dropfoto.ptpip.PtpCamera
 import com.loudmusic.dropfoto.ptpip.PtpConnectionLostException
 import com.loudmusic.dropfoto.ptpip.PtpException
@@ -46,6 +47,8 @@ data class DownloadProgress(
     val bytesPerSecond: Double = 0.0,
     val waitingForCamera: Boolean = false,
     val lastError: String? = null,
+    /** Where the time went for the last finished file, e.g. for diagnosing slow transfers. */
+    val lastTiming: String? = null,
 ) {
     val remaining: Int get() = total - done - failed
 }
@@ -190,8 +193,15 @@ class DownloadQueue(
             _progress.update { it.copy(currentBytes = resumeFrom, batchBytesDone = it.batchBytesDone + credit) }
             var lastBytes = resumeFrom
             var lastTime = System.nanoTime()
+            val chunks = mutableListOf<ChunkStats>()
+            val started = System.nanoTime()
             FileOutputStream(part, true).use { out ->
-                cam.download(file.handle, file.size, out, startOffset = resumeFrom, chunkSize = chunkSize) { bytes, _ ->
+                cam.download(
+                    file.handle, file.size, out,
+                    startOffset = resumeFrom,
+                    chunkSize = chunkSize,
+                    onChunk = { chunks += it },
+                ) { bytes, _ ->
                     val now = System.nanoTime()
                     val delta = bytes - lastBytes
                     val seconds = (now - lastTime) / 1e9
@@ -208,8 +218,25 @@ class DownloadQueue(
                     synchronized(lock) { credited[file.key] = bytes }
                 }
             }
+            val timing = describeTiming(file.size - resumeFrom, (System.nanoTime() - started) / 1_000_000, chunks)
             store.publish(file, part)
-            log("Saved ${file.filename}")
+            log("Saved ${file.filename}: $timing")
+            _progress.update { it.copy(lastTiming = "${file.filename}: $timing") }
         }
     }
+}
+
+/**
+ * "5.9 MB in 19.6 s (0.30 MB/s) · data flowing 1.9 MB/s · camera start-up 4.1 s · queued 12.3 s · 6 requests"
+ * Separates the camera's raw speed from per-request overhead and from waiting behind other requests.
+ */
+internal fun describeTiming(bytes: Long, totalMillis: Long, chunks: List<ChunkStats>): String {
+    fun mb(b: Long) = "%.1f MB".format(b / 1e6)
+    fun s(ms: Long) = "%.1f s".format(ms / 1000.0)
+    fun rate(b: Long, ms: Long) = if (ms > 0) "%.2f MB/s".format(b / 1e6 / (ms / 1000.0)) else "?"
+    val transfer = chunks.sumOf { it.transferMillis }
+    val startup = chunks.sumOf { it.firstByteMillis }
+    val queued = chunks.sumOf { it.queuedMillis }
+    return "${mb(bytes)} in ${s(totalMillis)} (${rate(bytes, totalMillis)}) · data flowing ${rate(bytes, transfer)}" +
+        " · camera start-up ${s(startup)} · queued ${s(queued)} · ${chunks.size} requests"
 }

@@ -149,3 +149,21 @@ class DownloadQueueTest {
         assertEquals(2, rig.store.order.size)
     }
 }
+
+class DescribeTimingTest {
+    @Test
+    fun `separates camera speed from overhead and queueing`() {
+        val text = describeTiming(
+            bytes = 6_000_000,
+            totalMillis = 20_000,
+            chunks = listOf(
+                com.loudmusic.dropfoto.ptpip.ChunkStats(3_000_000, queuedMillis = 5_000, firstByteMillis = 2_000, transferMillis = 1_500),
+                com.loudmusic.dropfoto.ptpip.ChunkStats(3_000_000, queuedMillis = 7_000, firstByteMillis = 3_000, transferMillis = 1_500),
+            ),
+        )
+        assertEquals(
+            "6.0 MB in 20.0 s (0.30 MB/s) · data flowing 2.00 MB/s · camera start-up 5.0 s · queued 12.0 s · 2 requests",
+            text,
+        )
+    }
+}

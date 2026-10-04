@@ -138,10 +138,26 @@ class PtpCameraTest {
         val nef = camera.files().toList().first { it.filename == "DSC_0001.NEF" }
         val out = ByteArrayOutputStream()
         val progress = mutableListOf<Long>()
-        camera.download(nef.handle, nef.size, out, chunkSize = 256 * 1024) { done, _ -> progress += done }
+        camera.download(nef.handle, nef.size, out, chunkSize = 256 * 1024, adaptive = false) { done, _ -> progress += done }
         assertContentEquals(FakeCamera.bytes(1_500_000, 1001), out.toByteArray())
         assertEquals(nef.size, progress.last())
         assertEquals(6, fake.requests.count { it.code == OperationCode.GET_PARTIAL_OBJECT })
+        camera.disconnect()
+    }
+
+    @Test
+    fun `uses bigger pieces when the camera is slow to start each read`() = test {
+        val fake = fake(FakeCamera.Options(partialReadLatencyMillis = 40))
+        val camera = PtpCamera.connect(config(fake))
+        val nef = camera.files().toList().first { it.filename == "DSC_0001.NEF" }
+        val stats = mutableListOf<ChunkStats>()
+        val out = ByteArrayOutputStream()
+        camera.download(nef.handle, nef.size, out, chunkSize = 128 * 1024, onChunk = { stats += it })
+        assertContentEquals(FakeCamera.bytes(1_500_000, 1001), out.toByteArray())
+        // Fixed 128 KB pieces would need 12 requests; doubling gets there in far fewer.
+        assertTrue(stats.size <= 5, "took ${stats.size} requests")
+        assertTrue(stats.all { it.firstByteMillis >= 35 }, stats.toString())
+        assertEquals(nef.size, stats.sumOf { it.bytes })
         camera.disconnect()
     }
 

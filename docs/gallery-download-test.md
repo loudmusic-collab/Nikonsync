@@ -30,6 +30,19 @@ Install `DropFoto-0.2.0-debug.apk` over the previous version; pairing and settin
 7. **Interrupt test:** start a RAW download and turn the camera's Wi-Fi off and on within a few seconds.
    It should say *Waiting for the camera to reconnect…* and then continue where it stopped.
 
+## Speed (v0.2.1)
+
+After each file, the download panel and the log show where its time went, for example:
+
+`DSC_8945.JPG: 5.9 MB in 19.6 s (0.30 MB/s) · data flowing 1.9 MB/s · camera start-up 4.1 s · queued 12.3 s · 6 requests`
+
+- **data flowing**: how fast bytes arrive once the camera is sending. This is the camera's Wi-Fi speed.
+- **camera start-up**: time the camera spends before it starts sending each piece.
+- **queued**: time the download waited behind DropFoto's own requests (thumbnails, card reading).
+
+Please send a screenshot of a few of these lines, ideally one JPEG and one NEF, with the gallery left alone
+while they download.
+
 ## Please note down
 
 - The **MB/s** shown while downloading JPEGs and RAWs. This is our first real speed figure.

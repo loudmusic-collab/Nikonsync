@@ -78,6 +78,8 @@ public class FakeCamera(
         val serialNumber: String = "FAKE0000001",
         val supportsPartialObject: Boolean = true,
         val supportsLargeThumb: Boolean = false,
+        /** Delay before answering each GetPartialObject, like a camera slow to start each read. */
+        val partialReadLatencyMillis: Long = 0,
         /** Advertise and answer MTP GetObjectPropList (bulk listing). */
         val supportsObjectPropList: Boolean = false,
         /** Data phases are split into Data packets of at most this many bytes. */
@@ -351,6 +353,7 @@ public class FakeCamera(
                 if (offset > obj.data.size) return true.also { respond(ResponseCode.INVALID_PARAMETER) }
                 val end = minOf(obj.data.size.toLong(), offset + max).toInt()
                 val slice = obj.data.copyOfRange(offset.toInt(), end)
+                if (options.partialReadLatencyMillis > 0) Thread.sleep(options.partialReadLatencyMillis)
                 if (!sendData(client, tid, slice, countsAsObjectData = true)) return false
                 respond(ResponseCode.OK, slice.size)
             }
