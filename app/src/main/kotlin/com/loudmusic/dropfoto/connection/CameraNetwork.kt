@@ -17,8 +17,19 @@ interface CameraNetwork {
 }
 
 fun interface CameraNetworkProvider {
-    /** Joins or finds the camera's network. Throws [NetworkUnavailableException] if that fails. */
-    suspend fun acquire(): CameraNetwork
+    /**
+     * Joins or finds the camera's network. Throws [NetworkUnavailableException] if that fails.
+     * @param reconnecting true when rejoining after the network was lost during this session
+     */
+    suspend fun acquire(reconnecting: Boolean): CameraNetwork
+}
+
+/** The camera's access point as last seen: an exact SSID + BSSID lets Android reconnect without asking. */
+data class KnownCamera(val ssid: String, val bssid: String)
+
+interface KnownCameraStore {
+    fun knownCamera(): KnownCamera?
+    fun rememberCamera(camera: KnownCamera)
 }
 
 class NetworkUnavailableException(message: String) : Exception(message)

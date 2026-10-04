@@ -24,8 +24,8 @@ data class ConnectionSettings(
     val port: Int = PtpIpConfig.DEFAULT_PORT,
 )
 
-/** Persists connection settings and this install's stable PTP/IP identity. */
-class SettingsStore(context: Context) {
+/** Persists connection settings, the last camera access point, and this install's stable PTP/IP identity. */
+class SettingsStore(context: Context) : KnownCameraStore {
     private val prefs = context.getSharedPreferences("connection", Context.MODE_PRIVATE)
 
     fun load() = ConnectionSettings(
@@ -55,6 +55,19 @@ class SettingsStore(context: Context) {
             }
     }
 
+    override fun knownCamera(): KnownCamera? {
+        val ssid = prefs.getString(KEY_KNOWN_SSID, null) ?: return null
+        val bssid = prefs.getString(KEY_KNOWN_BSSID, null) ?: return null
+        return KnownCamera(ssid, bssid)
+    }
+
+    override fun rememberCamera(camera: KnownCamera) {
+        prefs.edit {
+            putString(KEY_KNOWN_SSID, camera.ssid)
+            putString(KEY_KNOWN_BSSID, camera.bssid)
+        }
+    }
+
     val friendlyName: String get() = "DropFoto (${Build.MODEL})".take(40)
 
     private companion object {
@@ -64,5 +77,7 @@ class SettingsStore(context: Context) {
         const val KEY_HOST = "host"
         const val KEY_PORT = "port"
         const val KEY_GUID = "guid"
+        const val KEY_KNOWN_SSID = "known_ssid"
+        const val KEY_KNOWN_BSSID = "known_bssid"
     }
 }

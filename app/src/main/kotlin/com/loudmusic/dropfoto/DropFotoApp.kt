@@ -22,7 +22,7 @@ class DropFotoApp : Application() {
     fun connectWithSavedSettings() {
         val s = settings.load()
         val provider: CameraNetworkProvider = when (s.mode) {
-            ConnectionMode.CAMERA_WIFI -> CameraWifiProvider(this, s.ssid, s.passphrase)
+            ConnectionMode.CAMERA_WIFI -> CameraWifiProvider(this, s.ssid, s.passphrase, settings, controller::log)
             ConnectionMode.CURRENT_WIFI -> CurrentWifiProvider(this)
         }
         controller.connect(provider) { socketFactory ->

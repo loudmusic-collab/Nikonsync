@@ -2,9 +2,11 @@ package com.loudmusic.dropfoto.connection
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.MacAddress
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSpecifier
 import android.os.PatternMatcher
 import kotlinx.coroutines.CompletableDeferred
@@ -16,9 +18,14 @@ import kotlin.coroutines.resumeWithException
 /**
  * Asks Android to join the camera's Wi-Fi just for this app (WifiNetworkSpecifier).
  *
- * Android shows a one-time "connect to this device?" dialog, joins the network without making it
- * the phone's default, and keeps mobile data for everything else. That avoids the classic failure
- * where the phone notices the camera network has no internet and switches away from it.
+ * Android joins the network without making it the phone's default and keeps mobile data for
+ * everything else. That avoids the classic failure where the phone notices the camera network has
+ * no internet and switches away from it.
+ *
+ * Android asks the user to approve a broad request ("any Nikon_WU2_ network") every time. A request
+ * for one exact access point (SSID + BSSID) that the user approved before is granted silently. So
+ * after the first approval, this remembers the camera's SSID and BSSID from the Wi-Fi scan results
+ * and asks for exactly that from then on, which keeps reconnects hands-free, even with the screen off.
  *
  * @param ssid exact network name, or blank to match any `Nikon_WU2_…` network
  * @param passphrase WPA2 password, or blank for an open network
@@ -27,31 +34,85 @@ class CameraWifiProvider(
     private val context: Context,
     private val ssid: String,
     private val passphrase: String,
-    private val timeoutMillis: Int = 60_000,
+    private val knownCameras: KnownCameraStore,
+    private val log: (String) -> Unit = {},
 ) : CameraNetworkProvider {
-    override suspend fun acquire(): CameraNetwork {
-        val specifier = WifiNetworkSpecifier.Builder().apply {
-            if (ssid.isBlank()) {
-                setSsidPattern(PatternMatcher(NIKON_SSID_PREFIX, PatternMatcher.PATTERN_PREFIX))
-            } else {
-                setSsid(ssid.trim())
+    private val wantedSsid = ssid.trim()
+
+    override suspend fun acquire(reconnecting: Boolean): CameraNetwork {
+        val known = knownCameras.knownCamera()?.takeIf { wantedSsid.isEmpty() || it.ssid == wantedSsid }
+        if (known != null) {
+            log("Looking for ${known.ssid} (${known.bssid})")
+            try {
+                return requestNetwork(
+                    context, request(exactSpecifier(known)), EXACT_TIMEOUT_MILLIS,
+                    "Couldn't find ${known.ssid}. Check the camera's Wi-Fi is on and nearby.",
+                )
+            } catch (e: NetworkUnavailableException) {
+                // While reconnecting, the camera's Wi-Fi may still be starting: let the controller retry.
+                if (reconnecting) throw e
+                log("Not found at its last address; searching for any matching camera network")
             }
-            if (passphrase.isNotEmpty()) setWpa2Passphrase(passphrase)
-        }.build()
-        val request = NetworkRequest.Builder()
-            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
-            .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .setNetworkSpecifier(specifier)
-            .build()
-        val what = if (ssid.isBlank()) "a Nikon camera network" else "\"${ssid.trim()}\""
-        return requestNetwork(
-            context, request, timeoutMillis,
+        }
+        val what = if (wantedSsid.isEmpty()) "a Nikon camera network" else "\"$wantedSsid\""
+        val network = requestNetwork(
+            context, request(broadSpecifier()), BROAD_TIMEOUT_MILLIS,
             "Couldn't join $what. Check the camera's Wi-Fi is on and nearby, and that you allowed the connection.",
         )
+        rememberAccessPoint()
+        return network
+    }
+
+    private fun broadSpecifier() = WifiNetworkSpecifier.Builder().apply {
+        if (wantedSsid.isEmpty()) {
+            setSsidPattern(PatternMatcher(NIKON_SSID_PREFIX, PatternMatcher.PATTERN_PREFIX))
+        } else {
+            setSsid(wantedSsid)
+        }
+        if (passphrase.isNotEmpty()) setWpa2Passphrase(passphrase)
+    }.build()
+
+    private fun exactSpecifier(camera: KnownCamera) = WifiNetworkSpecifier.Builder().apply {
+        setSsid(camera.ssid)
+        setBssid(MacAddress.fromString(camera.bssid))
+        if (passphrase.isNotEmpty()) setWpa2Passphrase(passphrase)
+    }.build()
+
+    private fun request(specifier: WifiNetworkSpecifier) = NetworkRequest.Builder()
+        .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+        .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        .setNetworkSpecifier(specifier)
+        .build()
+
+    /** Finds the access point we just joined in the scan results and saves its SSID + BSSID. */
+    private fun rememberAccessPoint() {
+        val wifi = context.getSystemService(WifiManager::class.java)
+        val results = try {
+            wifi.scanResults
+        } catch (_: SecurityException) {
+            log("Can't read Wi-Fi scan results, so Android will ask to approve the camera network on every connect")
+            return
+        }
+        @Suppress("DEPRECATION")
+        val match = results
+            .filter { r -> if (wantedSsid.isEmpty()) r.SSID.startsWith(NIKON_SSID_PREFIX) else r.SSID == wantedSsid }
+            .maxByOrNull { it.level }
+        if (match == null) {
+            log("Couldn't find the camera in the Wi-Fi scan results; Android may ask to approve again next time")
+            return
+        }
+        @Suppress("DEPRECATION")
+        val camera = KnownCamera(match.SSID, match.BSSID)
+        if (camera != knownCameras.knownCamera()) {
+            knownCameras.rememberCamera(camera)
+            log("Remembered camera network ${camera.ssid} (${camera.bssid}) for hands-free reconnects")
+        }
     }
 
     companion object {
         const val NIKON_SSID_PREFIX = "Nikon_WU2_"
+        private const val EXACT_TIMEOUT_MILLIS = 30_000
+        private const val BROAD_TIMEOUT_MILLIS = 60_000
     }
 }
 
@@ -64,7 +125,7 @@ class CurrentWifiProvider(
     private val context: Context,
     private val timeoutMillis: Int = 10_000,
 ) : CameraNetworkProvider {
-    override suspend fun acquire(): CameraNetwork {
+    override suspend fun acquire(reconnecting: Boolean): CameraNetwork {
         val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)

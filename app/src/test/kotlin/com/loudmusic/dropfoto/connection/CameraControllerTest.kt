@@ -41,11 +41,18 @@ class CameraControllerTest {
         }
     }
 
-    private class TestProvider : CameraNetworkProvider {
+    /** Hands out networks; the first [failReconnects] rejoin attempts fail, like a camera Wi-Fi still booting. */
+    private class TestProvider(private var failReconnects: Int = 0) : CameraNetworkProvider {
         val acquired = AtomicInteger()
+        val reconnectFlags = mutableListOf<Boolean>()
         val networks = mutableListOf<TestNetwork>()
-        override suspend fun acquire(): CameraNetwork {
+        override suspend fun acquire(reconnecting: Boolean): CameraNetwork {
             acquired.incrementAndGet()
+            synchronized(reconnectFlags) { reconnectFlags += reconnecting }
+            if (reconnecting && failReconnects > 0) {
+                failReconnects--
+                throw NetworkUnavailableException("camera Wi-Fi not back yet")
+            }
             return TestNetwork().also { synchronized(networks) { networks += it } }
         }
     }
@@ -117,6 +124,20 @@ class CameraControllerTest {
         controller.awaitState { it is ConnectionState.Connected }
         assertEquals(2, provider.acquired.get())
         assertTrue(first.released)
+    }
+
+    @Test
+    fun `keeps trying to rejoin while the camera Wi-Fi restarts`() = test {
+        val fake = fake()
+        val provider = TestProvider(failReconnects = 2)
+        val controller = CameraController(scope, fastTiming)
+        controller.connect(provider, config(fake))
+        controller.awaitState { it is ConnectionState.Connected }
+
+        synchronized(provider.networks) { provider.networks.single() }.lost.complete(Unit)
+        controller.awaitState { it is ConnectionState.Reconnecting && it.reason == "camera Wi-Fi not back yet" }
+        controller.awaitState { it is ConnectionState.Connected }
+        assertEquals(listOf(false, true, true, true), synchronized(provider.reconnectFlags) { provider.reconnectFlags.toList() })
     }
 
     @Test

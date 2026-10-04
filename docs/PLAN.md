@@ -9,7 +9,7 @@ It replaces Nikon's Wireless Mobile Utility (WMU), whose connection was unreliab
 | Question | Answer | What it means for the build |
 |---|---|---|
 | Main test phone | Samsung Galaxy S21 Ultra, Android 15 (One UI 7) | Test on this phone first. Handle Samsung Wi-Fi and battery settings explicitly (§2). Follow Android 15's foreground-service rules. |
-| Shooting format | RAW + JPEG | The gallery shows each NEF+JPG pair as **one tile**. Downloads grab JPEGs first, then RAWs (§5). |
+| Shooting format | RAW + JPEG | The gallery shows each NEF+JPG pair as **one tile**. Sync downloads **JPEGs only by default**; RAW is opt-in (§5). |
 | Distribution | Personal use first (sideloaded APK), possibly the Play Store later | Build to Play Store rules from day one so publishing later needs no rework (§10). Keep minSdk 29 so more phones can install it. |
 
 ---
@@ -166,12 +166,15 @@ The UI observes this as a `StateFlow` and shows the exact stage, so a failure re
 - Resume after a reconnect. Skip files already downloaded.
 - Runs in the foreground service with a progress notification, so it continues with the
   screen off
-- **Order for RAW+JPEG:** all JPEGs in a selection download first, then the NEFs. You get
-  shareable photos within seconds while the large RAW files (~20–25 MB each on the D5500)
-  keep downloading in the background.
+- **JPEG only by default.** On the real card a JPEG is about 4–6 MB and its NEF about 24–30 MB,
+  so JPEGs transfer roughly **5× faster**, and a pair is ~85% RAW by size.
+- **Choosing per download:** the download button offers **JPEG** (default), **RAW** or **RAW + JPEG**,
+  and the setting remembers your usual choice. Tiles show which halves are on the phone already, so
+  you can **add the RAW later** for just the keepers.
+- When both are chosen, all JPEGs in the selection download first, then the NEFs, so shareable
+  photos arrive while the big RAW files keep going in the background.
 - Settings:
-  - **What to download:** RAW+JPEG (default), JPEG only, or RAW only. You can also override
-    this per selection, for example "just the JPEGs for now".
+  - **Default download:** JPEG (default), RAW, or RAW + JPEG.
   - **Where to save:** `Pictures/DropFoto/` by default. JPEG and NEF go in the same folder
     so Lightroom and Snapseed pair them.
 - NEF files are saved with MIME type `image/x-nikon-nef`. Phase 4 confirms that MediaStore on
@@ -216,8 +219,10 @@ chunked downloads, resuming after a mid-transfer drop, single-client refusal, ev
 - **Listing is slow:** 671 files (11.1 GB, 333 RAW+JPEG pairs) took **82 s**, about 120 ms per
   GetObjectInfo. One request at a time is a PTP rule, so Phase 3 must not make you wait for a full
   listing (see below).
-- Still to check: 30 minutes with the screen off, and whether Android asks to approve the network
-  again on reconnect.
+- Android asked to approve the camera network again on reconnect (pop-up, tap to connect). Fixed:
+  after the first approval the app remembers the camera's SSID + BSSID and asks for exactly that
+  access point, which Android grants without asking. To confirm on the S21.
+- Still to check: 30 minutes with the screen off.
 - `WifiConnector` (specifier request, network callbacks, socket factory, WifiLock)
 - `CameraService` foreground service + state machine + keep-alive + reconnect
 - A minimal debug screen that shows the state and the `GetDeviceInfo` output
@@ -238,9 +243,10 @@ chunked downloads, resuming after a mid-transfer drop, single-client refusal, ev
 
 ### Phase 4: Downloads
 - Persistent queue, chunked resumable downloads, MediaStore publish, dedupe, notification
-- **Exit criteria:** 50 RAW+JPEG pairs download on the S21 Ultra with the screen off. All
-  JPEGs arrive before any NEF, the queue survives one forced disconnect, and no file is
-  corrupt (verified by size and by opening them in Samsung Gallery and Lightroom).
+- **Exit criteria:** with the screen off on the S21 Ultra, 50 JPEGs download with the default
+  setting, then the RAW files for 10 of those shots are added afterwards. The queue survives one
+  forced disconnect, and no file is corrupt (verified by size and by opening them in Samsung Gallery
+  and Lightroom).
 
 ### Phase 5: Polish and hardening
 - Error messages in plain language, onboarding, settings, dark theme, and handling for
@@ -296,7 +302,7 @@ CI: GitHub Actions running `./gradlew ptpip:test app:lint app:assembleDebug` on 
 ## 9. Open questions for the owner
 
 1. ~~Phone and Android version~~ → Samsung S21 Ultra, Android 15
-2. ~~RAW, JPEG or both~~ → RAW+JPEG; download both by default, JPEGs first
+2. ~~RAW, JPEG or both~~ → shoots RAW+JPEG; sync **JPEGs only by default**, with RAW or both as options
 3. Download folder: `Pictures/DropFoto/` unless you'd prefer another location
 4. ~~Personal or Play Store~~ → personal first, Play Store maybe later (see §10)
 

@@ -93,15 +93,24 @@ class CameraController(
     private suspend fun session(provider: CameraNetworkProvider, config: (SocketFactory) -> PtpIpConfig) {
         var outcome: ConnectionState = ConnectionState.Idle
         var failures = 0
+        var reconnecting = false
         try {
             while (true) {
                 _state.value = ConnectionState.JoiningNetwork
-                log("Joining the camera's network")
+                log(if (reconnecting) "Rejoining the camera's network" else "Joining the camera's network")
                 val network = try {
-                    provider.acquire()
+                    provider.acquire(reconnecting)
                 } catch (e: NetworkUnavailableException) {
-                    throw GiveUp(e.message ?: "Couldn't join the camera's Wi-Fi")
+                    val reason = e.message ?: "Couldn't join the camera's Wi-Fi"
+                    // On the first join, report straight away (wrong settings, dialog declined).
+                    // After a drop, the camera's Wi-Fi may just be restarting, so keep trying.
+                    if (!reconnecting) throw GiveUp(reason)
+                    failures++
+                    if (failures >= timing.maxAttempts) throw GiveUp(reason)
+                    backoff(failures, reason, lost = null)
+                    continue
                 }
+                reconnecting = true
                 log("Camera network ready")
                 try {
                     failures = runOnNetwork(network, config, failures)
